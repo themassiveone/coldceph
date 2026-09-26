@@ -6,7 +6,6 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/coldceph/control
 ExecStart=/opt/coldceph/control/ColdCeph.Control
-Environment=ASPNETCORE_URLS=http://0.0.0.0:8080
 Environment=WEB_PORT=8080
 Environment=S3_PORT=7480
 Environment=COLDCEPH_DATA=/var/lib/coldceph

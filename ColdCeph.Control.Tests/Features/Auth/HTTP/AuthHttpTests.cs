@@ -7,12 +7,25 @@ namespace ColdCeph.Control.Tests.Features.Auth.HTTP;
 public sealed class AuthHttpTests
 {
     [Test]
-    public async Task Operator_pages_return_401_without_a_login_redirect()
+    public async Task Operator_html_pages_send_anonymous_browsers_to_login()
     {
         using var factory = new Support.ControlAppFactory();
         using var client = factory.CreateClient(new() { AllowAutoRedirect = false });
 
         var response = await client.GetAsync("/");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
+        Assert.That(response.Headers.Location?.ToString(), Is.EqualTo("/auth/login"));
+        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task Operator_api_returns_401_without_a_login_redirect()
+    {
+        using var factory = new Support.ControlAppFactory();
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false });
+
+        var response = await client.GetAsync("/v1/cluster/state");
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
         Assert.That(response.Headers.Location, Is.Null);

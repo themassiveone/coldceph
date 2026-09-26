@@ -3,9 +3,10 @@
 @inject StoragePlaneController StoragePlane
 @inject IntegrityController Integrity
 @{
-    var plane = StoragePlane.GetState();
-    var integrity = Integrity.GetIntegrity();
-    var waking = plane.State.ToString() is "Waking" or "Sleeping";
+    var skipCephChrome = Context.Request.Path.StartsWithSegments("/auth/login");
+    var plane = skipCephChrome ? null : StoragePlane.GetState();
+    var health = skipCephChrome ? null : Integrity.GetRawHealth();
+    var waking = plane?.State.ToString() is "Waking" or "Sleeping";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -28,8 +29,11 @@
 <body>
 <header>
     <strong>ColdCeph</strong>
-    <span class="chrome"><span class="label">Operational</span> @plane.State</span>
-    <span class="chrome"><span class="label">Ceph</span> @integrity.Raw.Status</span>
+    @if (plane is not null && health is not null)
+    {
+        <span class="chrome"><span class="label">Operational</span> @plane.State</span>
+        <span class="chrome"><span class="label">Ceph</span> @health.Status</span>
+    }
     <nav>
         <a href="/">Storage</a>
         <a href="/integrity">Integrity</a>

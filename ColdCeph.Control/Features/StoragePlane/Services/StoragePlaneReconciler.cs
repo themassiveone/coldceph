@@ -43,6 +43,18 @@ public sealed class StoragePlaneReconciler : BackgroundService
 
     public void ReconcileOnce()
     {
+        try
+        {
+            ReconcileBody();
+        }
+        catch (Exception)
+        {
+            // A failed Ceph CLI or illegal transition must not stop the hosted loop.
+        }
+    }
+
+    private void ReconcileBody()
+    {
         var snapshot = _plane.GetState();
         var integrity = _integrity.GetIntegrity();
         var pending = _s3.GetPendingWork();

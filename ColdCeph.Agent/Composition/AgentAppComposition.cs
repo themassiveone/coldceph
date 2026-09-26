@@ -3,6 +3,8 @@ using ColdCeph.Agent.Features.Devices.Interfaces;
 using ColdCeph.Agent.Features.Devices.Providers;
 using ColdCeph.Agent.Features.Devices.Services;
 using ColdCeph.Agent.Features.Hosts.Controllers;
+using ColdCeph.Agent.Features.Hosts.Interfaces;
+using ColdCeph.Agent.Features.Hosts.Providers;
 using ColdCeph.Agent.Features.Hosts.Services;
 using ColdCeph.Agent.Features.Osds.Controllers;
 using ColdCeph.Agent.Features.Osds.Interfaces;
@@ -17,9 +19,13 @@ public static class AgentAppComposition
     public static void Configure(WebApplicationBuilder builder, AgentConfig config)
     {
         builder.Services.AddSingleton(config);
+        builder.Logging.AddFilter(AgentLogging.ShouldLog);
+        builder.Services.AddHttpClient("control");
         builder.Services.AddSingleton<IProcessRunner, SystemProcessRunner>();
         builder.Services.AddSingleton<HostsService>();
         builder.Services.AddSingleton<HostsController>();
+        builder.Services.AddSingleton<IControlHeartbeatClient, HttpControlHeartbeatClient>();
+        builder.Services.AddHostedService<HostsHeartbeatLoop>();
         builder.Services.AddSingleton<IOsdRuntime, SystemdOsdRuntime>();
         builder.Services.AddSingleton<OsdsService>();
         builder.Services.AddSingleton<OsdsController>();

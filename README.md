@@ -42,11 +42,78 @@ sudo systemctl enable --now coldceph-agent
 
 State lives on a local SSD path (`/var/lib/coldceph`), never on the HDDs being put to sleep.
 
-## Development
+## Getting started (local Ceph)
+
+This repo ships a tiny but representative Ceph: one container running **MON**, **MGR**, **OSD**, and **RGW**. Start it, then run Control and Agent from the IDE.
+
+Defaults are baked in. Copy `.env.example` only if you want to change them.
 
 ```bash
-dotnet test coldceph.slnx
-dotnet run --project ColdCeph.Control
+cp .env.example .env          # optional
+docker compose up -d
+docker compose ps             # wait until ceph is healthy (first boot can take a couple of minutes)
 ```
 
-Under Agent-Up, Control consumes `WEB_PORT` from `agent-up.json`.
+A later `docker compose up` must **rejoin** the named volumes. Compose pins the container IP
+(`172.28.90.10`) so the monitor can bind after a recreate, and `docker/ceph/demo-entrypoint.sh`
+seeds the image’s demo-user sentinel so `demo.sh` does not exit on `user: coldceph exists`.
+Stillstand is `ceph -w` as PID 1 after a `SUCCESS` log line, then `healthy` on
+`docker compose ps`. A cluster written under a previous Docker IP cannot rejoin — wipe once
+with `docker compose down -v` and let first boot run again.
+
+Then start **ColdCeph.Control**, then **ColdCeph.Agent**. Control does not need an Agent. The Agent
+asks to join; open **Hosts** and click **Allow**. Open **http://127.0.0.1:8080** or
+**http://localhost:8080** — unauthenticated visits go to `/auth/login` (password `changeme`).
+`/health` is anonymous JSON if you want a bind check without the UI.
+
+| What | Default | Override |
+|------|---------|----------|
+| Operator UI | http://127.0.0.1:8080 | `WEB_PORT` |
+| Operator login password | `changeme` | `COLDCEPH_OPERATOR_PASSWORD` |
+| ColdCeph S3 listener | http://127.0.0.1:7480 | `S3_PORT` |
+| RGW (direct) | http://127.0.0.1:7481 | `RGW_HOST_PORT` / `COLDCEPH_RGW` |
+| S3 access key | `coldceph` | `CEPH_DEMO_ACCESS_KEY` |
+| S3 secret key | `coldcephsecret` | `CEPH_DEMO_SECRET_KEY` |
+| Demo user / bucket | `coldceph` / `cold` | `CEPH_DEMO_UID` / `CEPH_DEMO_BUCKET` |
+| Agent | http://127.0.0.1:7080 | `AGENT_PORT` / `COLDCEPH_ADVERTISE_URL` |
+| Agent joins Control at | http://127.0.0.1:8080 | `COLDCEPH_CONTROL_ENDPOINT` |
+| Agent token (Control→Agent only) | `changeme` | `COLDCEPH_AGENT_TOKEN` |
+| Agent host id | `dev` | `COLDCEPH_HOST_ID` / `COLDCEPH_AGENT_HOST_ID` |
+| Ceph CLI | `docker/ceph/ceph` | `COLDCEPH_CEPH_BINARY` |
+| Ceph image | `quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8` | `CEPH_IMAGE` |
+
+Path-style S3 through ColdCeph (once the plane is READY):
+
+```bash
+aws --endpoint-url http://127.0.0.1:7480 s3 ls \
+  --access-key coldceph --secret-key coldcephsecret
+```
+
+The compose OSD lives inside Docker. The host Agent will not systemd-manage those container OSDs; it is still the node you launch from the IDE so Control has a live agent endpoint.
+
+Talk to Ceph without installing `ceph-common`:
+
+```bash
+docker/ceph/ceph status --format json
+```
+
+## Tests
+
+Unit and architecture tests (no Docker):
+
+```bash
+dotnet test coldceph.slnx --filter "FullyQualifiedName!~ColdCeph.E2E.Tests"
+```
+
+E2E starts a Testcontainers Ceph demo once for the test project (HiveShard-style assembly
+`[SetUpFixture]`), then reuses Control + Agent across Xcepto journeys (fluent adapters,
+3–5 steps each). Do not `docker compose up` first — the suite hosts Ceph:
+
+```bash
+dotnet test coldceph.slnx --filter "FullyQualifiedName~ColdCeph.E2E.Tests"
+```
+
+CI runs both jobs. The E2E job does not start `compose.yaml`; Testcontainers owns the cluster.
+`compose.yaml` is only for local IDE getting-started against a long-lived demo.
+
+Under Agent-Up, Control uses `--no-launch-profile` and consumes `WEB_PORT` from `agent-up.json`. Add the same `COLDCEPH_*` variables there if that Control process should also target compose Ceph.

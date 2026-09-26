@@ -2,4 +2,6 @@ port: 7080
 hostId: changeme
 hostname: changeme
 agentToken: changeme
+controlEndpoint: http://127.0.0.1:8080
+advertiseUrl: http://127.0.0.1:7080
 dataDirectory: /var/lib/coldceph/agent

@@ -25,15 +25,11 @@ public sealed class HostsApiController : ControllerBase
         return host is null ? NotFound() : Ok(host);
     }
 
-    [HttpPost("heartbeat")]
-    public IActionResult Heartbeat([FromBody] AgentStatusDto status)
-        => Ok(_hosts.RegisterHeartbeat(status, AgentEndpoint(Request)));
-
-    private static Uri AgentEndpoint(HttpRequest request)
+    [HttpPost("join")]
+    [AllowAnonymous]
+    public IActionResult Join([FromBody] AgentStatusDto status)
     {
-        if (request.Headers.TryGetValue("X-ColdCeph-Agent-Endpoint", out var value)
-            && Uri.TryCreate(value.ToString(), UriKind.Absolute, out var uri))
-            return uri;
-        return new Uri("http://127.0.0.1:7080");
+        var result = _hosts.RequestJoin(status, Request.Headers["X-ColdCeph-Agent-Endpoint"]);
+        return StatusCode(result.StatusCode, result.Host);
     }
 }

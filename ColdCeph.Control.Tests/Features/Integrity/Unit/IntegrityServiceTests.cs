@@ -4,6 +4,7 @@ using ColdCeph.Control.Features.StoragePlane.Services;
 using ColdCeph.Control.Tests.Fake;
 using ColdCeph.Control.Composition;
 using ColdCeph.Core.Features.Integrity.DTOs;
+using ColdCeph.Core.Features.Operations.DTOs;
 using ColdCeph.Core.Features.StoragePlane.DTOs;
 
 namespace ColdCeph.Control.Tests.Features.Integrity.Unit;
@@ -28,6 +29,46 @@ public sealed class IntegrityServiceTests
 
         Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
         Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_ERR"));
+    }
+
+    [Test]
+    public void Health_warn_while_waking_is_not_unexpected()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_WARN",
+            Summary = "OSD_DOWN: 1 osds down",
+            Checks = ["OSD_DOWN: 1 osds down"]
+        };
+        ceph.HealthChecks = ["OSD_DOWN: 1 osds down"];
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.All(check => check.Classification != HealthClassification.Unexpected), Is.True);
+        Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+    }
+
+    [Test]
+    public void Unfound_objects_while_waking_remain_unexpected()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_ERR",
+            Summary = "unfound objects",
+            Checks = ["OBJECT_UNFOUND: unfound objects"]
+        };
+        ceph.HasUnfound = true;
+        ceph.HealthChecks = ["OBJECT_UNFOUND: unfound objects"];
+        plane.RequestWake(OperationIdRules.Create().Value, "operator");
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
+        Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
     }
 
     [Test]
@@ -71,6 +112,62 @@ public sealed class IntegrityServiceTests
 
         Assert.That(snapshot.Predicates.SleepSafe, Is.True);
         Assert.That(snapshot.Raw.Summary, Does.Not.Contain("ok-to-stop"));
+    }
+
+    [Test]
+    public void Raw_health_reports_the_ceph_status_chip()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_WARN",
+            Summary = "too few PGs",
+            Checks = ["TOO_FEW_PGS: too few PGs"]
+        };
+
+        var raw = integrity.GetRawHealth();
+
+        Assert.That(raw.Status, Is.EqualTo("HEALTH_WARN"));
+    }
+
+    [Test]
+    public void Raw_health_does_not_rewrite_err_as_ok()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_ERR",
+            Summary = "1 osds down",
+            Checks = ["OSD_DOWN: 1 osds down"]
+        };
+
+        var raw = integrity.GetRawHealth();
+
+        Assert.That(raw.Status, Is.Not.EqualTo("HEALTH_OK"));
+        Assert.That(raw.Status, Is.EqualTo("HEALTH_ERR"));
+    }
+
+    [Test]
+    public void Raw_health_reuses_the_last_integrity_snapshot()
+    {
+        var (integrity, ceph, _) = Create();
+        _ = integrity.GetIntegrity();
+        var calls = ceph.HealthDetailCalls;
+
+        _ = integrity.GetRawHealth();
+
+        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(calls));
+    }
+
+    [Test]
+    public void Raw_health_fetches_when_no_snapshot_exists()
+    {
+        var (integrity, ceph, _) = Create();
+
+        var raw = integrity.GetRawHealth();
+
+        Assert.That(ceph.HealthDetailCalls, Is.GreaterThan(0));
+        Assert.That(raw.Status, Is.EqualTo("HEALTH_OK"));
     }
 
     private static (IntegrityService Integrity, FakeCephQueryProvider Ceph, StoragePlaneService Plane) Create()

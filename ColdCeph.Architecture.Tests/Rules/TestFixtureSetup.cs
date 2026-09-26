@@ -24,6 +24,9 @@ public sealed class TestFixtureSetup
     private static bool HasSetUpMethod(string path)
     {
         var (_, node) = ArchitectureFixture.ParseSourceFile(path);
+        if (HasAttribute(node, "SetUpFixture"))
+            return false;
+
         return node.DescendantNodes()
             .OfType<MethodDeclarationSyntax>()
             .SelectMany(method => method.AttributeLists.SelectMany(list => list.Attributes))
@@ -31,4 +34,13 @@ public sealed class TestFixtureSetup
                 ArchitectureFixture.FinalTypeSegment(attribute.Name).Replace("Attribute", string.Empty),
                 StringComparer.Ordinal));
     }
+
+    private static bool HasAttribute(Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax node, string name)
+        => node.DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .SelectMany(type => type.AttributeLists.SelectMany(list => list.Attributes))
+            .Any(attribute => string.Equals(
+                ArchitectureFixture.FinalTypeSegment(attribute.Name).Replace("Attribute", string.Empty),
+                name,
+                StringComparison.Ordinal));
 }

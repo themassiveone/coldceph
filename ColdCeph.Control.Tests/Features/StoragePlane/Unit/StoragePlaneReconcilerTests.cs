@@ -58,6 +58,30 @@ public sealed class StoragePlaneReconcilerTests
         Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Faulted));
     }
 
+    [Test]
+    public void Provider_failure_does_not_escape_reconcile()
+    {
+        var harness = Create();
+        harness.Ceph.ThrowOnHealth = true;
+
+        Assert.DoesNotThrow(() => harness.Reconciler.ReconcileOnce());
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Cold));
+    }
+
+    [Test]
+    public void Provider_failure_does_not_prevent_a_later_successful_wake()
+    {
+        var harness = Create();
+        harness.Ceph.ThrowOnHealth = true;
+        harness.Reconciler.ReconcileOnce();
+        harness.Ceph.ThrowOnHealth = false;
+        harness.Ledger.BeginQueued();
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+    }
+
     private static Harness Create()
     {
         var clock = new FakeClock();

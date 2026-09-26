@@ -1,0 +1,53 @@
+# Tiny local Ceph for ColdCeph development.
+# One container, four real daemons: MON + MGR (control plane), OSD (data), RGW (S3).
+# Override any ${VAR} by copying .env.example to .env.
+services:
+  ceph:
+    image: ${CEPH_IMAGE:-quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8}
+    container_name: ${CEPH_CONTAINER_NAME:-coldceph-ceph}
+    hostname: ${CEPH_HOSTNAME:-ceph}
+    entrypoint: ["/bin/bash", "/opt/coldceph/demo-entrypoint.sh"]
+    privileged: true
+    shm_size: 1gb
+    environment:
+      NETWORK_AUTO_DETECT: ${NETWORK_AUTO_DETECT:-0}
+      MON_IP: ${CEPH_IPV4:-172.28.90.10}
+      CEPH_PUBLIC_NETWORK: ${CEPH_PUBLIC_NETWORK:-172.28.90.0/24}
+      DEMO_DAEMONS: ${DEMO_DAEMONS:-mon,mgr,osd,rgw}
+      CEPH_DEMO_UID: ${CEPH_DEMO_UID:-coldceph}
+      CEPH_DEMO_ACCESS_KEY: ${CEPH_DEMO_ACCESS_KEY:-coldceph}
+      CEPH_DEMO_SECRET_KEY: ${CEPH_DEMO_SECRET_KEY:-coldcephsecret}
+      CEPH_DEMO_BUCKET: ${CEPH_DEMO_BUCKET:-cold}
+      RGW_CIVETWEB_PORT: ${RGW_CIVETWEB_PORT:-8080}
+      RGW_NAME: ${RGW_NAME:-localhost}
+      CEPH_DASHBOARD: ${CEPH_DASHBOARD:-0}
+    ports:
+      - "${RGW_HOST_PORT:-7481}:${RGW_CIVETWEB_PORT:-8080}"
+      - "${MON_HOST_PORT:-3300}:3300"
+    networks:
+      default:
+        ipv4_address: ${CEPH_IPV4:-172.28.90.10}
+    volumes:
+      - ./docker/ceph/demo-entrypoint.sh:/opt/coldceph/demo-entrypoint.sh:ro
+      - ceph-etc:/etc/ceph
+      - ceph-lib:/var/lib/ceph
+    tmpfs:
+      - /var/run/ceph
+    healthcheck:
+      test: ["CMD", "ceph", "-s"]
+      interval: 5s
+      timeout: 10s
+      retries: 36
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  ceph-etc:
+  ceph-lib:
+
+networks:
+  default:
+    name: ${CEPH_NETWORK_NAME:-coldceph_ceph}
+    ipam:
+      config:
+        - subnet: ${CEPH_PUBLIC_NETWORK:-172.28.90.0/24}

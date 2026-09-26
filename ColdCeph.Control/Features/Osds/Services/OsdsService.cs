@@ -31,6 +31,9 @@ public sealed class OsdsService
             _osds[osd.OsdId] = osd;
     }
 
+    public void RefreshFromAgent(Uri endpoint)
+        => Observe(_agent.List(endpoint));
+
     public void Seed(OsdDto osd) => _osds[osd.OsdId] = osd;
 
     public void StartAll(Uri agentEndpoint, string operationId)

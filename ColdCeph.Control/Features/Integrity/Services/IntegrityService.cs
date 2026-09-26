@@ -25,6 +25,20 @@ public sealed class IntegrityService
         _clock = clock;
     }
 
+    private readonly object _snapshotGate = new();
+    private IntegritySnapshot? _last;
+
+    public CephHealthRaw GetRawHealth()
+    {
+        lock (_snapshotGate)
+        {
+            if (_last is not null)
+                return _last.Raw;
+        }
+
+        return GetIntegrity().Raw;
+    }
+
     public IntegritySnapshot GetIntegrity()
     {
         var raw = _ceph.GetHealthDetail();
@@ -34,7 +48,7 @@ public sealed class IntegrityService
         if (predicates.WriteReady)
             _repository.SaveVerifiedClean(_clock.UtcNow, raw.Summary);
 
-        return new IntegritySnapshot
+        var snapshot = new IntegritySnapshot
         {
             Raw = raw,
             Checks = checks,
@@ -43,6 +57,9 @@ public sealed class IntegrityService
             LastVerifiedCleanSummary = _repository.GetLastVerifiedCleanSummary(),
             ObservedAt = _clock.UtcNow
         };
+        lock (_snapshotGate)
+            _last = snapshot;
+        return snapshot;
     }
 
     private static IReadOnlyList<ClassifiedHealthCheck> Classify(CephHealthRaw raw, StoragePlaneState plane)
@@ -68,7 +85,7 @@ public sealed class IntegrityService
                            || Contains(check, "HEALTH_ERR")
                            || Contains(check, "HEALTH_WARN");
 
-        if (expectedCold && plane is StoragePlaneState.Cold or StoragePlaneState.Sleeping or StoragePlaneState.Quiescing)
+        if (expectedCold && plane is StoragePlaneState.Cold or StoragePlaneState.Sleeping or StoragePlaneState.Quiescing or StoragePlaneState.Waking)
             return HealthClassification.ExpectedCold;
 
         if (rawHealthy(check))

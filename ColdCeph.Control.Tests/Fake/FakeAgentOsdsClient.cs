@@ -8,7 +8,16 @@ public sealed class FakeAgentOsdsClient : IAgentOsdsClient
     public List<string> Commands { get; } = [];
     public bool Running { get; set; }
 
-    public IReadOnlyList<OsdDto> List(Uri endpoint) => [];
+    public List<OsdDto> Inventory { get; set; } = [];
+
+    public bool ThrowOnList { get; set; }
+
+    public IReadOnlyList<OsdDto> List(Uri endpoint)
+    {
+        if (ThrowOnList)
+            throw new InvalidOperationException("agent down");
+        return Inventory;
+    }
 
     public OsdMutationResult Start(Uri endpoint, OsdMutationRequest request)
     {

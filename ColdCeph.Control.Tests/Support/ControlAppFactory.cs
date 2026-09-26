@@ -12,13 +12,19 @@ namespace ColdCeph.Control.Tests.Support;
 public sealed class ControlAppFactory : WebApplicationFactory<Program>
 {
     private readonly string _dataDir = Path.Join(Path.GetTempPath(), "coldceph-tests", Guid.NewGuid().ToString("N"));
+    public FakeCephQueryProvider Ceph { get; } = new();
 
     public ControlAppFactory()
     {
         Environment.SetEnvironmentVariable("COLDCEPH_BIND", "0");
         Environment.SetEnvironmentVariable("COLDCEPH_DATA", _dataDir);
         Environment.SetEnvironmentVariable("COLDCEPH_OPERATOR_PASSWORD", "secret");
+        Environment.SetEnvironmentVariable("COLDCEPH_AGENT_TOKEN", "changeme");
         Environment.SetEnvironmentVariable("COLDCEPH_S3_MODE", "retry");
+        Environment.SetEnvironmentVariable("COLDCEPH_AGENT_ENDPOINT", null);
+        Environment.SetEnvironmentVariable("COLDCEPH_CEPH_BINARY", null);
+        Environment.SetEnvironmentVariable("COLDCEPH_CEPH_CONF", null);
+        Environment.SetEnvironmentVariable("COLDCEPH_CEPH_KEYRING", null);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -27,7 +33,7 @@ public sealed class ControlAppFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<ICephQueryProvider>();
-            services.AddSingleton<ICephQueryProvider>(new FakeCephQueryProvider());
+            services.AddSingleton<ICephQueryProvider>(Ceph);
             services.RemoveAll<INooutProvider>();
             services.AddSingleton<INooutProvider>(new RecordingNooutProvider());
             services.RemoveAll<IProcessRunner>();

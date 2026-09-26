@@ -89,7 +89,12 @@ internal static class ArchitectureFixture
         "Fake",
         "Fixtures",
         "Support",
-        "E2E"
+        "E2E",
+        "Adapters",
+        "Scenarios",
+        "Backend",
+        "Extensions",
+        "States"
     ];
 
     public static readonly string[] QueryMethodPrefixes =

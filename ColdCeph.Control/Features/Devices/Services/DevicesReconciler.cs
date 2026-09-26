@@ -38,12 +38,25 @@ public sealed class DevicesReconciler : BackgroundService
 
     public void ReconcileOnce()
     {
+        try
+        {
+            ReconcileBody();
+        }
+        catch (Exception)
+        {
+            // A failed agent call must not stop the hosted loop.
+        }
+    }
+
+    private void ReconcileBody()
+    {
         var state = _plane.GetState().State;
         var host = _hosts.ListHosts().FirstOrDefault();
         if (host is null)
             return;
 
         var operationId = _plane.GetState().ActiveOperationId ?? OperationIdRules.Create().Value;
+        _devices.RefreshFromAgent(host.Endpoint);
         if (state == StoragePlaneState.Waking)
             _devices.WakeAll(host.Endpoint, operationId);
         if (state == StoragePlaneState.Sleeping && _osds.IsEveryProcessStopped())

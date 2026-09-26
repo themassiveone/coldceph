@@ -8,7 +8,16 @@ public sealed class FakeAgentDevicesClient : IAgentDevicesClient
     public List<string> Commands { get; } = [];
     public DevicePowerState Power { get; set; } = DevicePowerState.Standby;
 
-    public IReadOnlyList<DeviceDto> List(Uri endpoint) => [];
+    public List<DeviceDto> Inventory { get; set; } = [];
+
+    public bool ThrowOnList { get; set; }
+
+    public IReadOnlyList<DeviceDto> List(Uri endpoint)
+    {
+        if (ThrowOnList)
+            throw new InvalidOperationException("agent down");
+        return Inventory;
+    }
 
     public DeviceMutationResult Wake(Uri endpoint, DeviceMutationRequest request)
     {

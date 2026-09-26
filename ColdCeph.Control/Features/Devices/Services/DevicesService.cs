@@ -33,6 +33,9 @@ public sealed class DevicesService
             _devices[device.DeviceId] = device;
     }
 
+    public void RefreshFromAgent(Uri endpoint)
+        => Observe(_agent.List(endpoint));
+
     public void WakeAll(Uri agentEndpoint, string operationId)
     {
         foreach (var device in _devices.Values.ToArray())

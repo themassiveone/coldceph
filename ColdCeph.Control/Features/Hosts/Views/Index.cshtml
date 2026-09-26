@@ -1,9 +1,59 @@
-@using ColdCeph.Core.Features.Hosts.DTOs
-@model IReadOnlyList<HostDto>
+@model ColdCeph.Control.Features.Hosts.ViewModels.HostsPageViewModel
 <h1>Hosts</h1>
-<ul>
-@foreach (var host in Model)
+
+<h2>Waiting to join</h2>
+@if (Model.Pending.Count == 0)
 {
-    <li>@host.Hostname — @(host.Alive ? "alive" : "stale") — @host.Endpoint</li>
+    <p>No agents are waiting.</p>
 }
-</ul>
+else
+{
+    <ul>
+    @foreach (var request in Model.Pending)
+    {
+        <li>
+            @request.Hostname — @request.Endpoint
+            <form method="post" action="/hosts/@request.HostId/approve" style="display:inline">
+                @Html.AntiForgeryToken()
+                <button type="submit">Allow</button>
+            </form>
+            <form method="post" action="/hosts/@request.HostId/deny" style="display:inline">
+                @Html.AntiForgeryToken()
+                <button type="submit">Deny</button>
+            </form>
+        </li>
+    }
+    </ul>
+}
+
+<h2>Enrolled</h2>
+@if (Model.Enrolled.Count == 0)
+{
+    <p>No enrolled agents.</p>
+}
+else
+{
+    <ul>
+    @foreach (var host in Model.Enrolled)
+    {
+        <li>@host.Hostname — @(host.Alive ? "alive" : "stale") — @host.Endpoint</li>
+    }
+    </ul>
+}
+
+@if (Model.Blocked.Count > 0)
+{
+    <h2>Blocked</h2>
+    <ul>
+    @foreach (var request in Model.Blocked)
+    {
+        <li>
+            @request.Hostname — @request.Endpoint
+            <form method="post" action="/hosts/@request.HostId/approve" style="display:inline">
+                @Html.AntiForgeryToken()
+                <button type="submit">Allow</button>
+            </form>
+        </li>
+    }
+    </ul>
+}

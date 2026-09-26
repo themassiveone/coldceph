@@ -22,7 +22,17 @@ public sealed class FakeCephQueryProvider : ICephQueryProvider
     public bool HasFullOsds { get; set; }
     public IReadOnlyList<string> HealthChecks { get; set; } = [];
 
-    public CephHealthRaw GetHealthDetail() => Health;
+    public bool ThrowOnHealth { get; set; }
+
+    public int HealthDetailCalls { get; set; }
+
+    public CephHealthRaw GetHealthDetail()
+    {
+        if (ThrowOnHealth)
+            throw new InvalidOperationException("ceph unavailable");
+        HealthDetailCalls++;
+        return Health;
+    }
     public bool GetQuorumAvailable() => QuorumAvailable;
     public bool GetPgsActive() => PgsActive;
     public bool GetPgsClean() => PgsClean;

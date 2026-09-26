@@ -40,8 +40,11 @@ public static class AppComposition
     public static void Configure(WebApplicationBuilder builder, ControlConfig config)
     {
         builder.Services.AddSingleton(config);
+        builder.Logging.AddFilter(ControlLogging.ShouldLog);
         builder.Services.AddSingleton<IClock, SystemClock>();
-        builder.Services.AddSingleton<IProcessRunner, SystemProcessRunner>();
+        builder.Services.AddSingleton<SystemProcessRunner>();
+        builder.Services.AddSingleton<IProcessRunner>(services =>
+            new SerialProcessRunner(services.GetRequiredService<SystemProcessRunner>()));
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddHttpClient("rgw");
         builder.Services.AddHttpClient("agent");
@@ -94,7 +97,13 @@ public static class AppComposition
                 {
                     OnRedirectToLogin = context =>
                     {
-                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        if (context.Request.Path.StartsWithSegments("/v1"))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            return Task.CompletedTask;
+                        }
+
+                        context.Response.Redirect("/auth/login");
                         return Task.CompletedTask;
                     },
                     OnRedirectToAccessDenied = context =>

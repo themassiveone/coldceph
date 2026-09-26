@@ -23,5 +23,6 @@ public sealed class AuthHttpNegativeTests
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
         Assert.That(response.Headers.Location, Is.Null);
+        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
     }
 }

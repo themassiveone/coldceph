@@ -1,3 +1,4 @@
+using ColdCeph.Control.Features.Hosts.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,5 +15,27 @@ public sealed class HostsPagesController : Controller
     }
 
     [HttpGet("/hosts")]
-    public IActionResult Index() => View("Index", _hosts.ListHosts());
+    public IActionResult Index()
+        => View("Index", new HostsPageViewModel
+        {
+            Pending = _hosts.ListPendingJoins(),
+            Enrolled = _hosts.ListHosts(),
+            Blocked = _hosts.ListBlockedJoins()
+        });
+
+    [HttpPost("/hosts/{hostId}/approve")]
+    [ValidateAntiForgeryToken]
+    public IActionResult Approve(string hostId)
+    {
+        _hosts.Approve(hostId);
+        return Redirect("/hosts");
+    }
+
+    [HttpPost("/hosts/{hostId}/deny")]
+    [ValidateAntiForgeryToken]
+    public IActionResult Deny(string hostId)
+    {
+        _hosts.Deny(hostId);
+        return Redirect("/hosts");
+    }
 }
