@@ -7,7 +7,7 @@ requests to RGW.
 ## What this is
 
 - **Control** (`coldceph-control`): operator UI, `/v1` management API, and the S3 listener.
-- **Agent** (`coldceph-agent`): per-node OSD process and disk power control.
+- **Node** (`coldceph-node`): per-node OSD process and disk power control.
 - **Ceph** stays responsible for objects, replication, CRUSH, scrubbing, and recovery.
 
 Full specification: [`docs/spec/cold-storage.md`](docs/spec/cold-storage.md).
@@ -26,25 +26,25 @@ Do not send S3 traffic to the operator port.
 Packages are published as GitHub Release assets:
 
 - `coldceph-control_*.deb`
-- `coldceph-agent_*.deb`
+- `coldceph-node_*.deb`
 
 ```bash
 sudo apt install ./coldceph-control_*.deb
-sudo apt install ./coldceph-agent_*.deb
+sudo apt install ./coldceph-node_*.deb
 ```
 
-Edit `/etc/coldceph/control.yaml` and `/etc/coldceph/agent.yaml`, then:
+Edit `/etc/coldceph/control.yaml` and `/etc/coldceph/node.yaml`, then:
 
 ```bash
 sudo systemctl enable --now coldceph-control
-sudo systemctl enable --now coldceph-agent
+sudo systemctl enable --now coldceph-node
 ```
 
 State lives on a local SSD path (`/var/lib/coldceph`), never on the HDDs being put to sleep.
 
 ## Getting started (local Ceph)
 
-This repo ships a tiny but representative Ceph: one container running **MON**, **MGR**, **OSD**, and **RGW**. Start it, then run Control and Agent from the IDE.
+This repo ships a tiny but representative Ceph: one container running **MON**, **MGR**, **OSD**, and **RGW**. Start it, then run Control and Node from the IDE.
 
 Defaults are baked in. Copy `.env.example` only if you want to change them.
 
@@ -61,7 +61,7 @@ Stillstand is `ceph -w` as PID 1 after a `SUCCESS` log line, then `healthy` on
 `docker compose ps`. A cluster written under a previous Docker IP cannot rejoin — wipe once
 with `docker compose down -v` and let first boot run again.
 
-Then start **ColdCeph.Control**, then **ColdCeph.Agent**. Control does not need an Agent. The Agent
+Then start **ColdCeph.Control**, then **ColdCeph.Node**. Control does not need a Node. The Node
 asks to join; open **Hosts** and click **Allow**. Open **http://127.0.0.1:8080** or
 **http://localhost:8080** — unauthenticated visits go to `/auth/login` (password `changeme`).
 `/health` is anonymous JSON if you want a bind check without the UI.
@@ -75,10 +75,10 @@ asks to join; open **Hosts** and click **Allow**. Open **http://127.0.0.1:8080**
 | S3 access key | `coldceph` | `CEPH_DEMO_ACCESS_KEY` |
 | S3 secret key | `coldcephsecret` | `CEPH_DEMO_SECRET_KEY` |
 | Demo user / bucket | `coldceph` / `cold` | `CEPH_DEMO_UID` / `CEPH_DEMO_BUCKET` |
-| Agent | http://127.0.0.1:7080 | `AGENT_PORT` / `COLDCEPH_ADVERTISE_URL` |
-| Agent joins Control at | http://127.0.0.1:8080 | `COLDCEPH_CONTROL_ENDPOINT` |
-| Agent token (Control→Agent only) | `changeme` | `COLDCEPH_AGENT_TOKEN` |
-| Agent host id | `dev` | `COLDCEPH_HOST_ID` / `COLDCEPH_AGENT_HOST_ID` |
+| Node | http://127.0.0.1:7080 | `NODE_PORT` / `COLDCEPH_ADVERTISE_URL` |
+| Node joins Control at | http://127.0.0.1:8080 | `COLDCEPH_CONTROL_ENDPOINT` |
+| Node token (Control→Node only) | `changeme` | `COLDCEPH_NODE_TOKEN` |
+| Node host id | `dev` | `COLDCEPH_HOST_ID` / `COLDCEPH_NODE_HOST_ID` |
 | Ceph CLI | `docker/ceph/ceph` | `COLDCEPH_CEPH_BINARY` |
 | Ceph image | `quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8` | `CEPH_IMAGE` |
 
@@ -89,7 +89,7 @@ aws --endpoint-url http://127.0.0.1:7480 s3 ls \
   --access-key coldceph --secret-key coldcephsecret
 ```
 
-The compose OSD lives inside Docker. The host Agent will not systemd-manage those container OSDs; it is still the node you launch from the IDE so Control has a live agent endpoint.
+The compose OSD lives inside Docker. The host Node will not systemd-manage those container OSDs; it is still the node you launch from the IDE so Control has a live node endpoint.
 
 Talk to Ceph without installing `ceph-common`:
 
@@ -106,7 +106,7 @@ dotnet test coldceph.slnx --filter "FullyQualifiedName!~ColdCeph.E2E.Tests"
 ```
 
 E2E starts a Testcontainers Ceph demo once for the test project (HiveShard-style assembly
-`[SetUpFixture]`), then reuses Control + Agent across Xcepto journeys (fluent adapters,
+`[SetUpFixture]`), then reuses Control + Node across Xcepto journeys (fluent adapters,
 3–5 steps each). Do not `docker compose up` first — the suite hosts Ceph:
 
 ```bash

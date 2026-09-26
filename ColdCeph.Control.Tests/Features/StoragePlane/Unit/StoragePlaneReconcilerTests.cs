@@ -95,9 +95,9 @@ public sealed class StoragePlaneReconcilerTests
         var integrityController = new IntegrityController(integrity);
         var ledger = new MemoryRequestLedger(clock);
         var s3 = new S3Service(ledger, planeController, integrityController, new FakeRgwProxy(), config);
-        var osds = new OsdsService(new FakeAgentOsdsClient(), config);
+        var osds = new OsdsService(new FakeNodeOsdsClient(), config);
         osds.Seed(new OsdDto { OsdId = 0, HostId = "h1", DeviceId = "d0", Up = false, In = true, ProcessRunning = false });
-        var devices = new DevicesService(new FakeAgentDevicesClient(), config);
+        var devices = new DevicesService(new FakeNodeDevicesClient(), config);
         devices.Seed(new DeviceDto
         {
             DeviceId = "d0",
@@ -109,7 +109,7 @@ public sealed class StoragePlaneReconcilerTests
             PowerState = DevicePowerState.Standby
         });
         var hosts = new HostsService(config, clock);
-        hosts.RegisterHeartbeat(new AgentStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
         var reconciler = new StoragePlaneReconciler(
             plane,
             new S3Controller(s3),

@@ -1,4 +1,4 @@
-using ColdCeph.Agent.Features.Devices.Interfaces;
+using ColdCeph.Node.Features.Devices.Interfaces;
 using ColdCeph.Core.Features.Devices.DTOs;
 
 namespace ColdCeph.E2E.Tests.Support;

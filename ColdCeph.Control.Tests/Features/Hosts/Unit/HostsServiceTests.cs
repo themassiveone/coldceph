@@ -14,7 +14,7 @@ public sealed class HostsServiceTests
         var clock = new FakeClock();
         var hosts = new HostsService(new ControlConfig { HeartbeatStaleAfter = TimeSpan.FromSeconds(30) }, clock);
 
-        var host = hosts.RegisterHeartbeat(new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
+        var host = hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
 
         Assert.That(host.Alive, Is.True);
         Assert.That(hosts.ListHosts(), Has.Count.EqualTo(1));
@@ -25,7 +25,7 @@ public sealed class HostsServiceTests
     {
         var clock = new FakeClock();
         var hosts = new HostsService(new ControlConfig { HeartbeatStaleAfter = TimeSpan.FromSeconds(30) }, clock);
-        hosts.RegisterHeartbeat(new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
         clock.UtcNow = clock.UtcNow.AddMinutes(5);
 
         Assert.That(hosts.GetHost("h1")!.Alive, Is.False);
@@ -40,8 +40,8 @@ public sealed class HostsServiceTests
             new ControlConfig
             {
                 HeartbeatStaleAfter = TimeSpan.FromSeconds(30),
-                ConfiguredAgentEndpoints = [new Uri("http://127.0.0.1:7080")],
-                ConfiguredAgentHostId = "dev"
+                ConfiguredNodeEndpoints = [new Uri("http://127.0.0.1:7080")],
+                ConfiguredNodeHostId = "dev"
             },
             clock);
 
@@ -52,7 +52,7 @@ public sealed class HostsServiceTests
     [Test]
     public void Missing_configured_endpoint_does_not_invent_a_host()
     {
-        var hosts = new HostsService(new ControlConfig { ConfiguredAgentEndpoints = [] }, new FakeClock());
+        var hosts = new HostsService(new ControlConfig { ConfiguredNodeEndpoints = [] }, new FakeClock());
 
         Assert.That(hosts.ListHosts(), Is.Empty);
         Assert.That(hosts.GetHost("dev"), Is.Null);
@@ -62,7 +62,7 @@ public sealed class HostsServiceTests
     public void Join_request_waits_for_operator_approval()
     {
         var hosts = new HostsService(new ControlConfig(), new FakeClock());
-        var status = new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
+        var status = new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
 
         var result = hosts.RequestJoin(status, "http://127.0.0.1:7080");
 
@@ -77,7 +77,7 @@ public sealed class HostsServiceTests
     public void Join_request_does_not_enroll_without_approval()
     {
         var hosts = new HostsService(new ControlConfig(), new FakeClock());
-        var status = new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
+        var status = new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
         hosts.RequestJoin(status, "http://127.0.0.1:7080");
         hosts.RequestJoin(status, "http://127.0.0.1:7080");
 
@@ -86,11 +86,11 @@ public sealed class HostsServiceTests
     }
 
     [Test]
-    public void Approve_enrolls_a_pending_agent()
+    public void Approve_enrolls_a_pending_node()
     {
         var hosts = new HostsService(new ControlConfig(), new FakeClock());
         hosts.RequestJoin(
-            new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow },
+            new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow },
             "http://127.0.0.1:7080");
 
         var enrolled = hosts.Approve("h1");
@@ -110,10 +110,10 @@ public sealed class HostsServiceTests
     }
 
     [Test]
-    public void Denied_agent_stays_off_the_enrolled_list()
+    public void Denied_node_stays_off_the_enrolled_list()
     {
         var hosts = new HostsService(new ControlConfig(), new FakeClock());
-        var status = new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
+        var status = new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
         hosts.RequestJoin(status, "http://127.0.0.1:7080");
         hosts.Deny("h1");
 
@@ -135,10 +135,10 @@ public sealed class HostsServiceTests
     }
 
     [Test]
-    public void Approved_agent_can_heartbeat_without_another_approval()
+    public void Approved_node_can_heartbeat_without_another_approval()
     {
         var hosts = new HostsService(new ControlConfig(), new FakeClock());
-        var status = new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
+        var status = new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow };
         hosts.RequestJoin(status, "http://127.0.0.1:7080");
         hosts.Approve("h1");
 
@@ -154,7 +154,7 @@ public sealed class HostsServiceTests
     {
         var hosts = new HostsService(new ControlConfig(), new FakeClock());
         var result = hosts.RequestJoin(
-            new AgentStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = DateTimeOffset.UtcNow },
+            new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = DateTimeOffset.UtcNow },
             "not-a-url");
 
         Assert.That(result.StatusCode, Is.EqualTo(400));

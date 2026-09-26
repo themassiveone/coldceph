@@ -1,4 +1,4 @@
-using ColdCeph.Agent.Features.Osds.Interfaces;
+using ColdCeph.Node.Features.Osds.Interfaces;
 
 namespace ColdCeph.E2E.Tests.Support;
 

@@ -58,7 +58,7 @@ Conceptually:
                          │
               ┌──────────┴───────────┐
               │                      │
-        Ceph Control API        Host Agents
+        Ceph Control API        Host Nodes
               │                      │
               │                 OS + disks
               ▼                      ▼
@@ -80,7 +80,7 @@ During normal cold operation:
 MON/MGR                  running
 Controller               running
 S3 gateway               running
-Host agents              running
+Host nodes              running
 RGW                      running or idle
 HDD-backed OSDs          stopped
 HDDs                     standby
@@ -164,7 +164,7 @@ The application must maintain a strict separation between:
 
 ```text
 STORAGE TRUTH             Ceph
-POWER / LIFECYCLE TRUTH   Application + host agents
+POWER / LIFECYCLE TRUTH   Application + host nodes
 CLIENT ENTRYPOINT         Application S3 gateway
 ```
 
@@ -204,7 +204,7 @@ Ceph MON
 Ceph MGR
 Cold-storage controller
 S3 gateway
-Host agents
+Host nodes
 Controller state
 ```
 
@@ -217,7 +217,7 @@ Host
 ├── SSD / NVMe / system disk
 │   ├── Linux
 │   ├── Ceph MON/MGR where applicable
-│   ├── controller or agent
+│   ├── controller or node
 │   └── application state
 │
 ├── HDD A
@@ -264,7 +264,7 @@ Responsibilities:
 - coordinate wake operations;
 - coordinate sleep operations;
 - query Ceph state;
-- query agents;
+- query nodes;
 - evaluate safety predicates;
 - maintain operation locks;
 - maintain application state;
@@ -317,9 +317,9 @@ Ceph provides programmatic monitor/manager command mechanisms through librados, 
 
 ---
 
-## 6.4 Host Agent
+## 6.4 Host Node
 
-One privileged agent runs on every physical machine containing managed OSD devices.
+One privileged node runs on every physical machine containing managed OSD devices.
 
 Responsibilities:
 
@@ -338,7 +338,7 @@ Responsibilities:
 
 The controller **must not directly execute arbitrary remote shell commands**.
 
-The agent exposes a constrained, authenticated management protocol.
+The node exposes a constrained, authenticated management protocol.
 
 ---
 
@@ -432,7 +432,7 @@ Expected conditions:
 - MON quorum remains available;
 - MGR is ideally available;
 - controller remains available;
-- host agents remain available.
+- host nodes remain available.
 
 Ceph may show:
 
@@ -577,7 +577,7 @@ The controller cannot establish a trustworthy cluster state.
 Examples:
 
 - MON quorum unavailable;
-- host agents disagree with Ceph topology;
+- host nodes disagree with Ceph topology;
 - some OSDs cannot start;
 - a drive disappeared;
 - controller lost ownership information for Ceph flags;
@@ -746,7 +746,7 @@ cannot be trusted until the application queries:
 ```text
 Ceph
 +
-all host agents
+all host nodes
 +
 managed drives
 +
@@ -785,7 +785,7 @@ Detailed algorithm:
 
 4. Query expected OSD inventory.
 
-5. Query all host agents.
+5. Query all host nodes.
 
 6. Verify every required managed OSD has a known host/device mapping.
 
@@ -860,7 +860,7 @@ Detailed algorithm:
 
 12. Verify the intended noout state.
 
-13. Stop OSDs through host agents.
+13. Stop OSDs through host nodes.
 
 14. Confirm OSD processes stopped.
 
@@ -1316,7 +1316,7 @@ Use as supplementary metadata for:
 - implementation/version details;
 - correlating an OSD with local host discovery.
 
-The host agent must independently verify the actual local block-device relationship before power operations.
+The host node must independently verify the actual local block-device relationship before power operations.
 
 ---
 
@@ -1762,7 +1762,7 @@ AND zero unfound objects
 AND zero inconsistent PGs
 AND no recovery/backfill
 AND no maintenance operation
-AND every managed OSD maps to a reachable host agent
+AND every managed OSD maps to a reachable host node
 AND every managed drive has a known stable identity
 ```
 
@@ -1914,7 +1914,7 @@ as durable identity.
 
 Linux block-device enumeration may change.
 
-The host agent should build identity from stable attributes such as:
+The host node should build identity from stable attributes such as:
 
 ```text
 /dev/disk/by-id/*
@@ -1966,7 +1966,7 @@ osd.7:
 
 ---
 
-# 32. Host Agent API
+# 32. Host Node API
 
 An implementation-specific protocol can be REST, RPC, gRPC, message bus, etc.
 
@@ -2063,7 +2063,7 @@ active transition
 transition history
 maintenance intents
 disk replacement intents
-agent identities
+node identities
 audit log
 ```
 
@@ -2123,7 +2123,7 @@ On restart:
 
 ```text
 query Ceph
-query agents
+query nodes
 discover actual state
 continue or fail safely
 ```
@@ -2276,7 +2276,7 @@ Those are separate layers.
 | OSD refuses to start | Remain PEERING/DEGRADED; block writes |
 | MON quorum unavailable | Block automatic sleep and writes |
 | MGR unavailable | Degrade optional monitoring; determine whether required core queries remain possible |
-| Host agent unreachable | Do not power-manage unknown devices; block sleep |
+| Host node unreachable | Do not power-manage unknown devices; block sleep |
 | PG remains peering | Do not enter READY |
 | PG becomes incomplete | Block S3 writes and normally reads |
 | Unfound object exists | Block sleep and writes; surface critical operator action |
@@ -2327,7 +2327,7 @@ Destructive commands should not be granted to normal cold-operation credentials.
 
 ---
 
-## 41.2 Host agent privilege separation
+## 41.2 Host node privilege separation
 
 Physical disk power management requires elevated privileges.
 
@@ -2337,14 +2337,14 @@ Therefore:
 S3 gateway       unprivileged
 UI               unprivileged
 controller       minimally privileged
-host agent       privileged but tightly constrained
+host node       privileged but tightly constrained
 ```
 
-The host agent should expose specific verbs, never arbitrary shell execution.
+The host node should expose specific verbs, never arbitrary shell execution.
 
 ---
 
-## 41.3 Controller-agent authentication
+## 41.3 Controller-node authentication
 
 Use strong mutual authentication:
 
@@ -2418,7 +2418,7 @@ integrity:
 maintenance:
   deep_scrub_max_age: 7d
 
-agents:
+nodes:
   discovery: configured
 
 controller:
@@ -2519,7 +2519,7 @@ While `COLD`:
 ```text
 Ceph status          slower
 MON quorum           periodic
-agent heartbeat      periodic
+node heartbeat      periodic
 disk power status    conservative
 full PG inspection   unnecessary until wake
 ```
@@ -2739,7 +2739,7 @@ HDD-backed OSDs only
 all managed HDD OSDs wake/sleep together
 external S3 proxy
 single active controller
-one host agent per storage host
+one host node per storage host
 native Ceph command adapter
 systemd runtime adapter first
 manual device-to-OSD verification
@@ -2846,8 +2846,8 @@ MON minority available
 MON quorum loss
 MGR restart
 controller restart
-agent restart
-controller-agent network partition
+node restart
+controller-node network partition
 Ceph API timeout
 stale cached status
 ```
@@ -2946,20 +2946,20 @@ No assumption that OSDs are systemd processes.
                     │ Cluster Controller  │
                     └──────┬────────┬─────┘
                            │        │
-                  Ceph API │        │ Agent protocol
+                  Ceph API │        │ Node protocol
                            │        │
                  ┌─────────▼──┐   ┌─▼───────────────┐
-                 │ MON / MGR  │   │ Host A agent    │
+                 │ MON / MGR  │   │ Host A node    │
                  └──────┬─────┘   │ OSD + HDD ctrl  │
                         │         └─────────────────┘
                         │
                         │         ┌─────────────────┐
-                        ├────────►│ Host B agent    │
+                        ├────────►│ Host B node    │
                         │         │ OSD + HDD ctrl  │
                         │         └─────────────────┘
                         │
                         │         ┌─────────────────┐
-                        └────────►│ Host C agent    │
+                        └────────►│ Host C node    │
                                   │ OSD + HDD ctrl  │
                                   └─────────────────┘
 

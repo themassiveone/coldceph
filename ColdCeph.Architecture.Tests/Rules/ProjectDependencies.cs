@@ -12,7 +12,7 @@ public sealed class ProjectDependencies
     public void Production_project_dependencies_follow_ownership_boundaries()
     {
         AssertDoesNotDependOn("ColdCeph.Core", ["ColdCeph.Core"]);
-        AssertDoesNotDependOn("ColdCeph.Agent", ["ColdCeph.Agent", "ColdCeph.Core"]);
+        AssertDoesNotDependOn("ColdCeph.Node", ["ColdCeph.Node", "ColdCeph.Core"]);
         AssertDoesNotDependOn("ColdCeph.Control", ["ColdCeph.Control", "ColdCeph.Core"]);
     }
 

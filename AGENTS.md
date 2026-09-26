@@ -24,15 +24,15 @@ Projects live at repo root. Target framework is `net10.0` with nullable referenc
 | Project | Role |
 |---------|------|
 | `ColdCeph.Core` | Shared slice DTOs and IDs. No HTTP, no `ceph` CLI, no systemd. |
-| `ColdCeph.Agent` | Privileged per-node host implementing Hosts, Osds, and Devices. |
+| `ColdCeph.Node` | Privileged per-node host implementing Hosts, Osds, and Devices. |
 | `ColdCeph.Control` | One Kestrel process: operator MVC + `/v1` + S3 listener. |
 | Matching `*.Tests` | NUnit, builders, `Features/<Slice>/<Kind>/`. |
 | `ColdCeph.Architecture.Tests` | Filesystem and ArchUnitNET rules, including slice boundaries. |
 | `ColdCeph.E2E.Tests` | Thin Xcepto journeys only. |
 
-Debs: `coldceph-control`, `coldceph-agent`.
+Debs: `coldceph-control`, `coldceph-node`.
 
-Control must not project-reference Agent. They speak HTTP using Core DTOs.
+Control must not project-reference Node. They speak HTTP using Core DTOs.
 
 # Slice Rule
 
@@ -43,7 +43,7 @@ This is the organizing rule for every production project.
 - Each slice is self-contained: `Controllers/`, `Services/`, `Providers/`, `Models/`, `DTOs/`, plus
   `Views/`/`ViewModels/` where that slice has SSR.
 - **A slice owns its writes.** Only that slice’s services (and its own protocol entrypoints: MVC,
-  `/v1`, S3 listener, agent HTTP) mutate its state.
+  `/v1`, S3 listener, node HTTP) mutate its state.
 - **Other slices may only read.** They inject the target `*Controller` and call query methods
   (`Get*`, `List*`, `Has*`, `Is*`). They must not call commands (`Wake`, `StopOsd`, `Standby`,
   `AppendAudit`, …).
@@ -51,7 +51,7 @@ This is the organizing rule for every production project.
   `Services/`, `Models/`, `Providers/`, `Repositories/`, `Interfaces/`, `Views/`.
 - Protocol surfaces (Razor, REST, S3) are not slices. They live in the owning slice’s
   `Controllers/` (and `Views/`). There is **no** `Features/Dashboard`, `Features/Ceph`,
-  `Features/ClusterState`, or `Features/Agents` dump.
+  `Features/ClusterState`, or `Features/Nodes` dump.
 - Reconcile loops sit **inside** the slice that owns the write: they **read** sibling controllers,
   then write locally. Example: Devices watches StoragePlane=`WAKING` and issues disk wake itself;
   StoragePlane does not call `Devices.Wake()`.
@@ -74,13 +74,13 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 | **S3** | Can clients GET/PUT objects through the cold endpoint? | In-flight/queued requests, proxy sessions, wait vs 503 | Pending work, active count, last activity |
 | **StoragePlane** | Is the data plane COLD, WAKING, READY, …? Should it sleep? | Operational state, transition lease, idle policy, controller-owned `noout` records | State, readiness, lease holder |
 | **Integrity** | Is my data known safe? What does Ceph say vs expected-cold? | Last verified-clean snapshot, classified health checks, PG/pool durability view | Integrity DTO, raw Ceph health fields |
-| **Osds** | Which OSDs exist, up/in, started/stopped? | Desired/observed OSD process commands to agents | OSD inventory DTOs |
-| **Devices** | Which HDDs, identity, power state? | Wake/standby commands to agents | Device inventory DTOs |
-| **Hosts** | Which machines, agent liveness? | Join requests, operator allow/deny, enrolled host liveness | Host DTOs, pending/blocked joins, agent endpoints |
+| **Osds** | Which OSDs exist, up/in, started/stopped? | Desired/observed OSD process commands to nodes | OSD inventory DTOs |
+| **Devices** | Which HDDs, identity, power state? | Wake/standby commands to nodes | Device inventory DTOs |
+| **Hosts** | Which machines, node liveness? | Join requests, operator allow/deny, enrolled host liveness | Host DTOs, pending/blocked joins, node endpoints |
 | **Operations** | What ran, who initiated, what flags changed? | Audit/operation records | Operation/event lists |
 | **Auth** | Who may operate this appliance? | Operator sessions/credentials | Current principal (queries only) |
 
-## Agent (`ColdCeph.Agent`)
+## Node (`ColdCeph.Node`)
 
 | Slice | User/maintainer meaning | Owns writes |
 |-------|-------------------------|-------------|
@@ -105,7 +105,7 @@ Invariants:
 - Sleep uses scoped `noout` owned by StoragePlane; never `out` / `safe-to-destroy` / destroy/purge/rm.
 - `ok-to-stop` is not the all-OSD sleep predicate.
 - Clear only flags StoragePlane recorded as controller-owned.
-- Startup: each slice reconciles from Ceph/agents/disks; persisted `COLD` is not trusted.
+- Startup: each slice reconciles from Ceph/nodes/disks; persisted `COLD` is not trusted.
 - One StoragePlane transition lease; many S3 requests create one pending-work signal, one wake.
 - Writes fail closed unless Integrity reports `write_ready`; cold `HEALTH_ERR` is classified
   expected, not hidden.
@@ -139,7 +139,7 @@ Wake from the UI is `POST` on **StoragePlane**’s controller (protocol entry).
 
 Second Kestrel URL (do not mix S3 and HTML): operator `:8080` (or `WEB_PORT` under Agent-Up), S3
 `:7480`. Both bind `http://*:port` so `localhost` (IPv6) and `127.0.0.1` reach the operator UI.
-HttpClient access-log lines for the agent/RGW clients stay at Warning so reconciler polls do not
+HttpClient access-log lines for the node/RGW clients stay at Warning so reconciler polls do not
 drown `Now listening on`. Transparent proxy to RGW. Preserve signed method/path/query/`Host`/`x-amz-*`. Wait-mode
 holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local buffering.
 `Expect: 100-continue` where possible.
@@ -151,7 +151,7 @@ holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local
   distinguish correct behaviour from incorrect behaviour.
 - No `[SetUp]` / `[OneTimeSetUp]` on new **test fixtures**. Arrange inside the test or a local helper
   with explicit arguments. `ColdCeph.E2E.Tests` may use a project `[SetUpFixture]` to host a
-  Testcontainers Ceph demo plus Control + Agent once for the whole Xcepto project.
+  Testcontainers Ceph demo plus Control + Node once for the whole Xcepto project.
 - Builders in `Support/` for hot DTOs (wide constructors used many times).
 - Slice **Unit/**: own writes and refuse illegal writes.
 - Slice **Controller/**: sibling-visible queries; commands only from that slice’s protocol tests.
@@ -165,15 +165,15 @@ holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local
   `ContainsHealth` reuses the cached `health detail` JSON; it must not spawn another process.
   Control’s process runner admits **one child process at a time**.
 - StoragePlane, Osds, and Devices reconcilers catch provider exceptions per tick so a
-  failed `ceph` or agent call cannot stop the loop. The next tick retries.
+  failed `ceph` or node call cannot stop the loop. The next tick retries.
 - `ColdCeph.E2E.Tests`: thin Xcepto only. A project `[SetUpFixture]` starts an assembly-wide
-  Testcontainers Ceph demo (`CephCluster`) plus in-process Control and Agent **once** and
+  Testcontainers Ceph demo (`CephCluster`) plus in-process Control and Node **once** and
   reuses that environment. Tests do not start their own stack and must not shell
-  `docker compose`. Custom adapters (`Operator`, `Agent`, `S3`, `Ceph`) are created through
+  `docker compose`. Custom adapters (`Operator`, `Node`, `S3`, `Ceph`) are created through
   fluent builders on the Xcepto transition builder. Each test is 3–5 steps: actions plus
   `EvaluateConditionsForTransition` expectations. Shared Control state is driven with
   `EnsureCold` / `EnsureReady` by polling `/health`, not by retrying full SSR. HTML is a
-  one-shot assertion. Xcepto timeouts stay fail-fast (seconds, not minutes). Agent OSD/disk
+  one-shot assertion. Xcepto timeouts stay fail-fast (seconds, not minutes). Node OSD/disk
   uses in-memory runtimes because systemd cannot manage the Testcontainer OSDs; Control talks
   to that container’s Ceph/RGW through a `docker exec` wrapper the fixture writes. Xcepto is
   used only inside `ColdCeph.E2E.Tests`. The project-level `[SetUpFixture]` is the allowed
@@ -182,7 +182,7 @@ holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local
 # Packaging and CI
 
 No LocalInstaller. Self-contained `linux-x64` publish, `packaging/linux/` systemd units
-(`Restart=on-failure`), `/opt/coldceph/{control,agent}`, `/etc/coldceph/*.yaml`, `dpkg-deb` →
+(`Restart=on-failure`), `/opt/coldceph/{control,node}`, `/etc/coldceph/*.yaml`, `dpkg-deb` →
 GitHub Release assets.
 
 CI: all branches run unit tests (`dotnet test` excluding `ColdCeph.E2E.Tests`) and a separate
@@ -205,13 +205,13 @@ exit when `coldceph` already exists; (2) the compose network is a pinned subnet 
 `MON_IP` (`172.28.90.10`) so a recreated container can bind the address stored in the monmap.
 `/var/run/ceph` is tmpfs. A monmap from a previous dynamic Docker IP cannot be repaired — wipe
 once with `docker compose down -v`. Ready still means `ceph -s` healthy plus RGW on host 7481.
-Credential and port defaults live in `.env.example` and in the Control/Agent
+Credential and port defaults live in `.env.example` and in the Control/Node
 `Properties/launchSettings.json` profiles. Every default is overridable with the same env var
-name. Control runs with zero agents. An Agent asks to join with `POST /v1/hosts/join` (no join
-token) and `X-ColdCeph-Agent-Endpoint`. Hosts keeps the request **pending** until the operator
-Allows it on `/hosts`. Deny blocks that agent until Allow. Optional `COLDCEPH_AGENT_ENDPOINT` is
-configured discovery: Control seeds that host as already enrolled. `COLDCEPH_AGENT_TOKEN` is only
-Control→Agent command auth, not a join secret.
+name. Control runs with zero nodes. A Node asks to join with `POST /v1/hosts/join` (no join
+token) and `X-ColdCeph-Node-Endpoint`. Hosts keeps the request **pending** until the operator
+Allows it on `/hosts`. Deny blocks that node until Allow. Optional `COLDCEPH_NODE_ENDPOINT` is
+configured discovery: Control seeds that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only
+Control→Node command auth, not a join secret.
 
 Control talks to compose Ceph through `COLDCEPH_CEPH_BINARY` (default wrapper `docker/ceph/ceph`)
 and to RGW through `COLDCEPH_RGW`. Optional `COLDCEPH_CEPH_CONF` / `COLDCEPH_CEPH_KEYRING` are

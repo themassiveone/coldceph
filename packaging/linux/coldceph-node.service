@@ -1,0 +1,20 @@
+[Unit]
+Description=ColdCeph Node
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/coldceph/node
+ExecStart=/opt/coldceph/node/ColdCeph.Node
+Environment=NODE_PORT=7080
+Environment=COLDCEPH_CONTROL_ENDPOINT=http://127.0.0.1:8080
+Environment=COLDCEPH_ADVERTISE_URL=http://127.0.0.1:7080
+Environment=COLDCEPH_NODE_DATA=/var/lib/coldceph/node
+Environment=DOTNET_CONTENTROOT=/opt/coldceph/node
+StandardOutput=append:/var/log/coldceph-node.log
+StandardError=append:/var/log/coldceph-node.err.log
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

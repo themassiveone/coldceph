@@ -10,14 +10,14 @@ internal static class ArchitectureFixture
     public static readonly string[] ProductionProjects =
     [
         "ColdCeph.Core",
-        "ColdCeph.Agent",
+        "ColdCeph.Node",
         "ColdCeph.Control"
     ];
 
     public static readonly string[] TestProjects =
     [
         "ColdCeph.Core.Tests",
-        "ColdCeph.Agent.Tests",
+        "ColdCeph.Node.Tests",
         "ColdCeph.Control.Tests",
         "ColdCeph.Architecture.Tests",
         "ColdCeph.E2E.Tests"
@@ -35,7 +35,7 @@ internal static class ArchitectureFixture
         "Auth"
     ];
 
-    public static readonly string[] AllowedAgentSlices =
+    public static readonly string[] AllowedNodeSlices =
     [
         "Osds",
         "Devices",
@@ -59,7 +59,7 @@ internal static class ArchitectureFixture
         "Dashboard",
         "Ceph",
         "ClusterState",
-        "Agents"
+        "Nodes"
     ];
 
     public static readonly string[] AllowedFeatureTypeFolders =

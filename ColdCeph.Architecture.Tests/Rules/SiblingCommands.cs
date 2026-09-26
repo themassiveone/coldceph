@@ -71,7 +71,7 @@ public sealed class SiblingCommands
             return null;
 
         var stem = controllerName[..^suffix.Length];
-        foreach (var known in ArchitectureFixture.AllowedControlSlices.Concat(ArchitectureFixture.AllowedAgentSlices).Distinct())
+        foreach (var known in ArchitectureFixture.AllowedControlSlices.Concat(ArchitectureFixture.AllowedNodeSlices).Distinct())
         {
             if (stem.StartsWith(known, StringComparison.Ordinal))
                 return known;

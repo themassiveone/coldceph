@@ -47,7 +47,7 @@ public static class AppComposition
             new SerialProcessRunner(services.GetRequiredService<SystemProcessRunner>()));
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddHttpClient("rgw");
-        builder.Services.AddHttpClient("agent");
+        builder.Services.AddHttpClient("node");
 
         builder.Services.AddSingleton<IStoragePlaneRepository, SqliteStoragePlaneRepository>();
         builder.Services.AddSingleton<INooutProvider, CephNooutProvider>();
@@ -68,11 +68,11 @@ public static class AppComposition
         builder.Services.AddSingleton<HostsService>();
         builder.Services.AddSingleton<HostsController>();
 
-        builder.Services.AddSingleton<IAgentOsdsClient, HttpAgentOsdsClient>();
+        builder.Services.AddSingleton<INodeOsdsClient, HttpNodeOsdsClient>();
         builder.Services.AddSingleton<OsdsService>();
         builder.Services.AddSingleton<OsdsController>();
 
-        builder.Services.AddSingleton<IAgentDevicesClient, HttpAgentDevicesClient>();
+        builder.Services.AddSingleton<INodeDevicesClient, HttpNodeDevicesClient>();
         builder.Services.AddSingleton<DevicesService>();
         builder.Services.AddSingleton<DevicesController>();
 

@@ -27,9 +27,9 @@ public sealed class HostsApiController : ControllerBase
 
     [HttpPost("join")]
     [AllowAnonymous]
-    public IActionResult Join([FromBody] AgentStatusDto status)
+    public IActionResult Join([FromBody] NodeStatusDto status)
     {
-        var result = _hosts.RequestJoin(status, Request.Headers["X-ColdCeph-Agent-Endpoint"]);
+        var result = _hosts.RequestJoin(status, Request.Headers["X-ColdCeph-Node-Endpoint"]);
         return StatusCode(result.StatusCode, result.Host);
     }
 }

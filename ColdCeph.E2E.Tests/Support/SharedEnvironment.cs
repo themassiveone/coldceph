@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
-using ColdCeph.Agent.Composition;
-using ColdCeph.Agent.Features.Devices.Interfaces;
-using ColdCeph.Agent.Features.Devices.Services;
-using ColdCeph.Agent.Features.Osds.Interfaces;
-using ColdCeph.Agent.Features.Osds.Services;
+using ColdCeph.Node.Composition;
+using ColdCeph.Node.Features.Devices.Interfaces;
+using ColdCeph.Node.Features.Devices.Services;
+using ColdCeph.Node.Features.Osds.Interfaces;
+using ColdCeph.Node.Features.Osds.Services;
 using ColdCeph.Control.Composition;
 using ColdCeph.Core.Features.Devices.DTOs;
 using ColdCeph.Core.Features.Osds.DTOs;
@@ -19,18 +19,18 @@ namespace ColdCeph.E2E.Tests.Support;
 public sealed class SharedEnvironment
 {
     public const string OperatorPassword = "changeme";
-    public const string AgentToken = "changeme";
+    public const string NodeToken = "changeme";
     public const string HostId = "dev";
     public const int OperatorPort = 18080;
     public const int S3Port = 17480;
-    public const int AgentPort = 17080;
+    public const int NodePort = 17080;
 
     private static WebApplication? _control;
-    private static WebApplication? _agent;
+    private static WebApplication? _node;
 
     public static Uri ControlAddress { get; } = new($"http://127.0.0.1:{OperatorPort}");
     public static Uri S3Address { get; } = new($"http://127.0.0.1:{S3Port}");
-    public static Uri AgentAddress { get; } = new($"http://127.0.0.1:{AgentPort}");
+    public static Uri NodeAddress { get; } = new($"http://127.0.0.1:{NodePort}");
     public static Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
     public static string RepositoryRoot { get; private set; } = "";
     public static string CephBinary { get; private set; } = "ceph";
@@ -40,9 +40,9 @@ public sealed class SharedEnvironment
         RepositoryRoot = FindRepositoryRoot();
         CephBinary = ceph.CephBinary;
         RgwAddress = ceph.RgwAddress;
-        _agent = await StartAgentAsync();
+        _node = await StartNodeAsync();
         _control = await StartControlAsync();
-        await WaitUntilListeningAsync(AgentAddress, "/health");
+        await WaitUntilListeningAsync(NodeAddress, "/health");
         await WaitUntilListeningAsync(ControlAddress, "/health");
     }
 
@@ -50,30 +50,30 @@ public sealed class SharedEnvironment
     {
         if (_control is not null)
             await _control.DisposeAsync();
-        if (_agent is not null)
-            await _agent.DisposeAsync();
+        if (_node is not null)
+            await _node.DisposeAsync();
         _control = null;
-        _agent = null;
+        _node = null;
     }
 
-    private static async Task<WebApplication> StartAgentAsync()
+    private static async Task<WebApplication> StartNodeAsync()
     {
         var builder = WebApplication.CreateBuilder();
-        var config = new AgentConfig
+        var config = new NodeConfig
         {
-            Port = AgentPort,
-            AgentToken = AgentToken,
+            Port = NodePort,
+            NodeToken = NodeToken,
             HostId = HostId,
             Hostname = HostId
         };
-        AgentAppComposition.Configure(builder, config);
+        NodeAppComposition.Configure(builder, config);
         builder.Services.RemoveAll<IOsdRuntime>();
         builder.Services.AddSingleton<IOsdRuntime, InMemoryOsdRuntime>();
         builder.Services.RemoveAll<IDiskPower>();
         builder.Services.AddSingleton<IDiskPower, InMemoryDiskPower>();
-        builder.WebHost.UseKestrel().UseUrls($"http://127.0.0.1:{AgentPort}");
+        builder.WebHost.UseKestrel().UseUrls($"http://127.0.0.1:{NodePort}");
         var app = builder.Build();
-        await AgentAppComposition.Initialize(app);
+        await NodeAppComposition.Initialize(app);
         app.Services.GetRequiredService<OsdsService>().Seed(new OsdDto
         {
             OsdId = 0,
@@ -113,10 +113,10 @@ public sealed class SharedEnvironment
             RgwEndpoint = RgwAddress,
             DataDirectory = data,
             OperatorPassword = OperatorPassword,
-            AgentToken = AgentToken,
+            NodeToken = NodeToken,
             CephBinary = CephBinary,
-            ConfiguredAgentEndpoints = [AgentAddress],
-            ConfiguredAgentHostId = HostId,
+            ConfiguredNodeEndpoints = [NodeAddress],
+            ConfiguredNodeHostId = HostId,
             S3Mode = S3AdmissionMode.Retry,
             IdleTimeout = TimeSpan.FromHours(1),
             BindHttpListeners = true

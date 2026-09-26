@@ -17,14 +17,14 @@ public sealed class HostsService
     {
         _config = config;
         _clock = clock;
-        for (var index = 0; index < config.ConfiguredAgentEndpoints.Count; index++)
+        for (var index = 0; index < config.ConfiguredNodeEndpoints.Count; index++)
         {
-            var hostId = config.ConfiguredAgentEndpoints.Count == 1
-                ? config.ConfiguredAgentHostId
-                : $"{config.ConfiguredAgentHostId}-{index + 1}";
+            var hostId = config.ConfiguredNodeEndpoints.Count == 1
+                ? config.ConfiguredNodeHostId
+                : $"{config.ConfiguredNodeHostId}-{index + 1}";
             RegisterHeartbeat(
-                new AgentStatusDto { HostId = hostId, Hostname = hostId, ObservedAt = clock.UtcNow },
-                config.ConfiguredAgentEndpoints[index]);
+                new NodeStatusDto { HostId = hostId, Hostname = hostId, ObservedAt = clock.UtcNow },
+                config.ConfiguredNodeEndpoints[index]);
         }
     }
 
@@ -40,7 +40,7 @@ public sealed class HostsService
     public HostDto? GetHost(string hostId)
         => _hosts.TryGetValue(hostId, out var host) ? Refresh(host) : null;
 
-    public HostDto RegisterHeartbeat(AgentStatusDto status, Uri endpoint)
+    public HostDto RegisterHeartbeat(NodeStatusDto status, Uri endpoint)
     {
         var host = new HostDto
         {
@@ -56,11 +56,11 @@ public sealed class HostsService
         return host;
     }
 
-    public AgentJoinResult RequestJoin(AgentStatusDto status, string? advertisedEndpoint)
+    public NodeJoinResult RequestJoin(NodeStatusDto status, string? advertisedEndpoint)
     {
         if (string.IsNullOrWhiteSpace(status.HostId)
             || !Uri.TryCreate(advertisedEndpoint, UriKind.Absolute, out var endpoint))
-            return new AgentJoinResult(400, null);
+            return new NodeJoinResult(400, null);
 
         var request = new HostJoinRequestDto
         {
@@ -71,16 +71,16 @@ public sealed class HostsService
         };
 
         if (_hosts.ContainsKey(status.HostId))
-            return new AgentJoinResult(200, RegisterHeartbeat(status, endpoint));
+            return new NodeJoinResult(200, RegisterHeartbeat(status, endpoint));
 
         if (_blocked.ContainsKey(status.HostId))
         {
             _blocked[status.HostId] = request;
-            return new AgentJoinResult(403, null);
+            return new NodeJoinResult(403, null);
         }
 
         _pending[status.HostId] = request;
-        return new AgentJoinResult(202, null);
+        return new NodeJoinResult(202, null);
     }
 
     public HostDto? Approve(string hostId)
@@ -100,7 +100,7 @@ public sealed class HostsService
         return true;
     }
 
-    private static AgentStatusDto ToStatus(HostJoinRequestDto request)
+    private static NodeStatusDto ToStatus(HostJoinRequestDto request)
         => new()
         {
             HostId = request.HostId,

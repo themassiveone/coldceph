@@ -6,13 +6,13 @@ namespace ColdCeph.Control.Features.Osds.Services;
 
 public sealed class OsdsService
 {
-    private readonly IAgentOsdsClient _agent;
+    private readonly INodeOsdsClient _node;
     private readonly ControlConfig _config;
     private readonly Dictionary<int, OsdDto> _osds = [];
 
-    public OsdsService(IAgentOsdsClient agent, ControlConfig config)
+    public OsdsService(INodeOsdsClient node, ControlConfig config)
     {
-        _agent = agent;
+        _node = node;
         _config = config;
     }
 
@@ -31,16 +31,16 @@ public sealed class OsdsService
             _osds[osd.OsdId] = osd;
     }
 
-    public void RefreshFromAgent(Uri endpoint)
-        => Observe(_agent.List(endpoint));
+    public void RefreshFromNode(Uri endpoint)
+        => Observe(_node.List(endpoint));
 
     public void Seed(OsdDto osd) => _osds[osd.OsdId] = osd;
 
-    public void StartAll(Uri agentEndpoint, string operationId)
+    public void StartAll(Uri nodeEndpoint, string operationId)
     {
         foreach (var osd in _osds.Values.ToArray())
         {
-            var result = _agent.Start(agentEndpoint, new OsdMutationRequest
+            var result = _node.Start(nodeEndpoint, new OsdMutationRequest
             {
                 OsdId = osd.OsdId,
                 OperationId = operationId,
@@ -52,11 +52,11 @@ public sealed class OsdsService
         }
     }
 
-    public void StopAll(Uri agentEndpoint, string operationId)
+    public void StopAll(Uri nodeEndpoint, string operationId)
     {
         foreach (var osd in _osds.Values.ToArray())
         {
-            var result = _agent.Stop(agentEndpoint, new OsdMutationRequest
+            var result = _node.Stop(nodeEndpoint, new OsdMutationRequest
             {
                 OsdId = osd.OsdId,
                 OperationId = operationId,

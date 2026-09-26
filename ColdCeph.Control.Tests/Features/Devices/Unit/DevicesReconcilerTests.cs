@@ -27,7 +27,7 @@ public sealed class DevicesReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Agent.Commands, Does.Contain("wake d0"));
+        Assert.That(harness.Node.Commands, Does.Contain("wake d0"));
     }
 
     [Test]
@@ -42,32 +42,32 @@ public sealed class DevicesReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Agent.Commands, Does.Not.Contain("standby d0"));
+        Assert.That(harness.Node.Commands, Does.Not.Contain("standby d0"));
     }
 
     [Test]
-    public void Agent_failure_does_not_escape_reconcile()
+    public void Node_failure_does_not_escape_reconcile()
     {
         var harness = Create(osdRunning: false);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Agent.ThrowOnList = true;
+        harness.Node.ThrowOnList = true;
 
         Assert.DoesNotThrow(() => harness.Reconciler.ReconcileOnce());
-        Assert.That(harness.Agent.Commands, Is.Empty);
+        Assert.That(harness.Node.Commands, Is.Empty);
     }
 
     [Test]
-    public void Agent_failure_does_not_prevent_a_later_wake()
+    public void Node_failure_does_not_prevent_a_later_wake()
     {
         var harness = Create(osdRunning: false);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Agent.ThrowOnList = true;
+        harness.Node.ThrowOnList = true;
         harness.Reconciler.ReconcileOnce();
-        harness.Agent.ThrowOnList = false;
+        harness.Node.ThrowOnList = false;
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Agent.Commands, Does.Contain("wake d0"));
+        Assert.That(harness.Node.Commands, Does.Contain("wake d0"));
     }
 
     private static Harness Create(bool osdRunning)
@@ -75,9 +75,9 @@ public sealed class DevicesReconcilerTests
         var clock = new FakeClock();
         var config = new ControlConfig();
         var plane = new StoragePlaneService(new MemoryStoragePlaneRepository(), new RecordingNooutProvider(), clock, config);
-        var osds = new OsdsService(new FakeAgentOsdsClient { Running = osdRunning }, config);
+        var osds = new OsdsService(new FakeNodeOsdsClient { Running = osdRunning }, config);
         osds.Seed(new OsdDto { OsdId = 0, HostId = "h1", DeviceId = "d0", Up = osdRunning, In = true, ProcessRunning = osdRunning });
-        var agent = new FakeAgentDevicesClient();
+        var node = new FakeNodeDevicesClient();
         var device = new DeviceDto
         {
             DeviceId = "d0",
@@ -88,14 +88,14 @@ public sealed class DevicesReconcilerTests
             Path = "/dev/sda",
             PowerState = osdRunning ? DevicePowerState.Active : DevicePowerState.Standby
         };
-        agent.Inventory = [device];
-        var devices = new DevicesService(agent, config);
+        node.Inventory = [device];
+        var devices = new DevicesService(node, config);
         devices.Seed(device);
         var hosts = new HostsService(config, clock);
-        hosts.RegisterHeartbeat(new AgentStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
         var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds), new HostsController(hosts));
-        return new Harness(plane, reconciler, agent);
+        return new Harness(plane, reconciler, node);
     }
 
-    private sealed record Harness(StoragePlaneService Plane, DevicesReconciler Reconciler, FakeAgentDevicesClient Agent);
+    private sealed record Harness(StoragePlaneService Plane, DevicesReconciler Reconciler, FakeNodeDevicesClient Node);
 }

@@ -21,10 +21,10 @@ public sealed class HostsController
 
     public HostDto? GetHost(string hostId) => _service.GetHost(hostId);
 
-    public HostDto RegisterHeartbeat(AgentStatusDto status, Uri endpoint)
+    public HostDto RegisterHeartbeat(NodeStatusDto status, Uri endpoint)
         => _service.RegisterHeartbeat(status, endpoint);
 
-    public AgentJoinResult RequestJoin(AgentStatusDto status, string? advertisedEndpoint)
+    public NodeJoinResult RequestJoin(NodeStatusDto status, string? advertisedEndpoint)
         => _service.RequestJoin(status, advertisedEndpoint);
 
     public HostDto? Approve(string hostId) => _service.Approve(hostId);

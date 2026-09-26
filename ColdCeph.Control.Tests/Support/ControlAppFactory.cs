@@ -19,9 +19,9 @@ public sealed class ControlAppFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("COLDCEPH_BIND", "0");
         Environment.SetEnvironmentVariable("COLDCEPH_DATA", _dataDir);
         Environment.SetEnvironmentVariable("COLDCEPH_OPERATOR_PASSWORD", "secret");
-        Environment.SetEnvironmentVariable("COLDCEPH_AGENT_TOKEN", "changeme");
+        Environment.SetEnvironmentVariable("COLDCEPH_NODE_TOKEN", "changeme");
         Environment.SetEnvironmentVariable("COLDCEPH_S3_MODE", "retry");
-        Environment.SetEnvironmentVariable("COLDCEPH_AGENT_ENDPOINT", null);
+        Environment.SetEnvironmentVariable("COLDCEPH_NODE_ENDPOINT", null);
         Environment.SetEnvironmentVariable("COLDCEPH_CEPH_BINARY", null);
         Environment.SetEnvironmentVariable("COLDCEPH_CEPH_CONF", null);
         Environment.SetEnvironmentVariable("COLDCEPH_CEPH_KEYRING", null);

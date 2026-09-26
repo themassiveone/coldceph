@@ -8,7 +8,7 @@ public static class TransitionBuilderExtensions
     public static OperatorAdapterBuilder OperatorAdapterBuilder(this TransitionBuilder builder)
         => new(builder);
 
-    public static AgentAdapterBuilder AgentAdapterBuilder(this TransitionBuilder builder)
+    public static NodeAdapterBuilder NodeAdapterBuilder(this TransitionBuilder builder)
         => new(builder);
 
     public static S3AdapterBuilder S3AdapterBuilder(this TransitionBuilder builder)

@@ -18,7 +18,7 @@ public sealed class FeatureSliceNames
                 var allowed = project switch
                 {
                     "ColdCeph.Control" => ArchitectureFixture.AllowedControlSlices,
-                    "ColdCeph.Agent" => ArchitectureFixture.AllowedAgentSlices,
+                    "ColdCeph.Node" => ArchitectureFixture.AllowedNodeSlices,
                     "ColdCeph.Core" => ArchitectureFixture.AllowedCoreSlices,
                     _ => []
                 };
@@ -46,6 +46,6 @@ public sealed class FeatureSliceNames
             .ToArray();
 
         Assert.That(violations, Is.Empty,
-            "There is no Dashboard, Ceph, ClusterState, or Agents dump slice.");
+            "There is no Dashboard, Ceph, ClusterState, or Nodes dump slice.");
     }
 }

@@ -1,0 +1,18 @@
+{
+  "profiles": {
+    "Node": {
+      "commandName": "Project",
+      "commandLineArgs": "",
+      "workingDirectory": "..",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "NODE_PORT": "7080",
+        "COLDCEPH_NODE_TOKEN": "changeme",
+        "COLDCEPH_HOST_ID": "dev",
+        "COLDCEPH_HOSTNAME": "dev",
+        "COLDCEPH_CONTROL_ENDPOINT": "http://127.0.0.1:8080",
+        "COLDCEPH_ADVERTISE_URL": "http://127.0.0.1:7080"
+      }
+    }
+  }
+}

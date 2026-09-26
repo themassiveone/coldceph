@@ -59,10 +59,10 @@ EOF
 }
 
 control_pub="$out/publish/control"
-agent_pub="$out/publish/agent"
+node_pub="$out/publish/node"
 publish ColdCeph.Control "$control_pub"
-publish ColdCeph.Agent "$agent_pub"
+publish ColdCeph.Node "$node_pub"
 stage_deb coldceph-control "$control_pub" coldceph-control.service control.yaml control
-stage_deb coldceph-agent "$agent_pub" coldceph-agent.service agent.yaml agent
+stage_deb coldceph-node "$node_pub" coldceph-node.service node.yaml node
 
 (cd "$out" && sha256sum ./*.deb > SHA256SUMS)

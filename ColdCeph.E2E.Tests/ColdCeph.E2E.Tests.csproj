@@ -15,7 +15,7 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ColdCeph.Agent\ColdCeph.Agent.csproj" />
+    <ProjectReference Include="..\ColdCeph.Node\ColdCeph.Node.csproj" />
     <ProjectReference Include="..\ColdCeph.Control\ColdCeph.Control.csproj" />
   </ItemGroup>
 </Project>

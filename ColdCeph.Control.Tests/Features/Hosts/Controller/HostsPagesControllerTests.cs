@@ -16,7 +16,7 @@ public sealed class HostsPagesControllerTests
     {
         var page = CreatePage();
         page.Hosts.RequestJoin(
-            new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow },
+            new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow },
             "http://127.0.0.1:7080");
 
         var result = (ViewResult)page.Pages.Index();
@@ -32,7 +32,7 @@ public sealed class HostsPagesControllerTests
     {
         var page = CreatePage();
         page.Hosts.RequestJoin(
-            new AgentStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow },
+            new NodeStatusDto { HostId = "h1", Hostname = "node", ObservedAt = DateTimeOffset.UtcNow },
             "http://127.0.0.1:7080");
 
         var result = (ViewResult)page.Pages.Index();

@@ -14,9 +14,9 @@ public sealed class HostsJoinHttpTests
     {
         using var factory = new Support.ControlAppFactory();
         using var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-ColdCeph-Agent-Endpoint", "http://127.0.0.1:7080");
+        client.DefaultRequestHeaders.Add("X-ColdCeph-Node-Endpoint", "http://127.0.0.1:7080");
 
-        var response = await client.PostAsJsonAsync("/v1/hosts/join", new AgentStatusDto
+        var response = await client.PostAsJsonAsync("/v1/hosts/join", new NodeStatusDto
         {
             HostId = "dev",
             Hostname = "dev",
@@ -30,14 +30,14 @@ public sealed class HostsJoinHttpTests
     }
 
     [Test]
-    public async Task Join_ignores_an_agent_token_and_still_waits_for_approval()
+    public async Task Join_ignores_a_node_token_and_still_waits_for_approval()
     {
         using var factory = new Support.ControlAppFactory();
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-ColdCeph-Token", "changeme");
-        client.DefaultRequestHeaders.Add("X-ColdCeph-Agent-Endpoint", "http://127.0.0.1:7080");
+        client.DefaultRequestHeaders.Add("X-ColdCeph-Node-Endpoint", "http://127.0.0.1:7080");
 
-        var response = await client.PostAsJsonAsync("/v1/hosts/join", new AgentStatusDto
+        var response = await client.PostAsJsonAsync("/v1/hosts/join", new NodeStatusDto
         {
             HostId = "dev",
             Hostname = "dev",
@@ -53,8 +53,8 @@ public sealed class HostsJoinHttpTests
     {
         using var factory = new Support.ControlAppFactory();
         using var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-ColdCeph-Agent-Endpoint", "http://127.0.0.1:7080");
-        await client.PostAsJsonAsync("/v1/hosts/join", new AgentStatusDto
+        client.DefaultRequestHeaders.Add("X-ColdCeph-Node-Endpoint", "http://127.0.0.1:7080");
+        await client.PostAsJsonAsync("/v1/hosts/join", new NodeStatusDto
         {
             HostId = "dev",
             Hostname = "dev",
@@ -73,7 +73,7 @@ public sealed class HostsJoinHttpTests
         using var factory = new Support.ControlAppFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/v1/hosts/join", new AgentStatusDto
+        var response = await client.PostAsJsonAsync("/v1/hosts/join", new NodeStatusDto
         {
             HostId = "dev",
             Hostname = "dev",

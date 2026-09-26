@@ -37,7 +37,7 @@ public sealed class OsdsReconciler : BackgroundService
         }
         catch (Exception)
         {
-            // A failed agent call must not stop the hosted loop.
+            // A failed node call must not stop the hosted loop.
         }
     }
 
@@ -49,7 +49,7 @@ public sealed class OsdsReconciler : BackgroundService
             return;
 
         var operationId = _plane.GetState().ActiveOperationId ?? OperationIdRules.Create().Value;
-        _osds.RefreshFromAgent(host.Endpoint);
+        _osds.RefreshFromNode(host.Endpoint);
         if (state == StoragePlaneState.Waking)
             _osds.StartAll(host.Endpoint, operationId);
         if (state == StoragePlaneState.Sleeping)
