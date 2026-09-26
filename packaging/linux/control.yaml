@@ -1,0 +1,10 @@
+operatorPort: 8080
+s3Port: 7480
+rgwEndpoint: http://127.0.0.1:80
+dataDirectory: /var/lib/coldceph
+operatorPassword: changeme
+agentToken: changeme
+idleTimeoutSeconds: 900
+s3Mode: wait
+retryAfterSeconds: 30
+cephBinary: ceph

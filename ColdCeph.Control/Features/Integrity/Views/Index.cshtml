@@ -1,0 +1,13 @@
+@using ColdCeph.Core.Features.Integrity.DTOs
+@model IntegritySnapshot
+<h1>Integrity</h1>
+<p>Raw Ceph health: <strong>@Model.Raw.Status</strong></p>
+<p>Last verified clean: @(Model.LastVerifiedCleanAt?.ToString("u") ?? "never")</p>
+<p>Write ready: @Model.Predicates.WriteReady</p>
+<p>Sleep safe: @Model.Predicates.SleepSafe</p>
+<ul>
+@foreach (var check in Model.Checks)
+{
+    <li>@check.Classification — @check.Detail</li>
+}
+</ul>

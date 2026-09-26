@@ -1,0 +1,6 @@
+@using ColdCeph.Core.Features.S3.DTOs
+@model S3PendingWorkDto
+<h1>S3 admission</h1>
+<p>Pending work: @Model.HasPendingWork</p>
+<p>Active: @Model.ActiveCount queued: @Model.QueuedCount</p>
+<p>Last activity: @(Model.LastActivity?.ToString("u") ?? "none")</p>

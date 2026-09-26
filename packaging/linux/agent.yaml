@@ -1,0 +1,5 @@
+port: 7080
+hostId: changeme
+hostname: changeme
+agentToken: changeme
+dataDirectory: /var/lib/coldceph/agent

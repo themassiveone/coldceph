@@ -1,0 +1,9 @@
+@using ColdCeph.Core.Features.Osds.DTOs
+@model IReadOnlyList<OsdDto>
+<h1>OSDs</h1>
+<ul>
+@foreach (var osd in Model)
+{
+    <li>osd.@osd.OsdId host=@osd.HostId running=@osd.ProcessRunning up=@osd.Up in=@osd.In</li>
+}
+</ul>

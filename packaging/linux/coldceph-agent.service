@@ -1,0 +1,18 @@
+[Unit]
+Description=ColdCeph Agent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/coldceph/agent
+ExecStart=/opt/coldceph/agent/ColdCeph.Agent
+Environment=AGENT_PORT=7080
+Environment=COLDCEPH_AGENT_DATA=/var/lib/coldceph/agent
+Environment=DOTNET_CONTENTROOT=/opt/coldceph/agent
+StandardOutput=append:/var/log/coldceph-agent.log
+StandardError=append:/var/log/coldceph-agent.err.log
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

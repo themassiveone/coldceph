@@ -1,0 +1,47 @@
+@using ColdCeph.Control.Features.Integrity.Controllers
+@using ColdCeph.Control.Features.StoragePlane.Controllers
+@inject StoragePlaneController StoragePlane
+@inject IntegrityController Integrity
+@{
+    var plane = StoragePlane.GetState();
+    var integrity = Integrity.GetIntegrity();
+    var waking = plane.State.ToString() is "Waking" or "Sleeping";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    @if (waking)
+    {
+        <meta http-equiv="refresh" content="5" />
+    }
+    <title>ColdCeph</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; }
+        header { background: #111; color: #eee; padding: 1rem 1.5rem; display: flex; gap: 1.5rem; align-items: baseline; }
+        header a { color: #9cf; }
+        main { padding: 1.5rem; }
+        .chrome { font-size: 0.95rem; }
+        .label { color: #888; }
+    </style>
+</head>
+<body>
+<header>
+    <strong>ColdCeph</strong>
+    <span class="chrome"><span class="label">Operational</span> @plane.State</span>
+    <span class="chrome"><span class="label">Ceph</span> @integrity.Raw.Status</span>
+    <nav>
+        <a href="/">Storage</a>
+        <a href="/integrity">Integrity</a>
+        <a href="/hosts">Hosts</a>
+        <a href="/osds">OSDs</a>
+        <a href="/devices">Devices</a>
+        <a href="/s3">S3</a>
+        <a href="/operations">Operations</a>
+    </nav>
+</header>
+<main>
+    @RenderBody()
+</main>
+</body>
+</html>

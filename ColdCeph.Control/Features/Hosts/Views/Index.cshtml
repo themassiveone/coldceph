@@ -1,0 +1,9 @@
+@using ColdCeph.Core.Features.Hosts.DTOs
+@model IReadOnlyList<HostDto>
+<h1>Hosts</h1>
+<ul>
+@foreach (var host in Model)
+{
+    <li>@host.Hostname — @(host.Alive ? "alive" : "stale") — @host.Endpoint</li>
+}
+</ul>

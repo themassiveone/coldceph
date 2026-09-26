@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="ColdCeph.Core/ColdCeph.Core.csproj" />
+  <Project Path="ColdCeph.Core.Tests/ColdCeph.Core.Tests.csproj" />
+  <Project Path="ColdCeph.Agent/ColdCeph.Agent.csproj" />
+  <Project Path="ColdCeph.Agent.Tests/ColdCeph.Agent.Tests.csproj" />
+  <Project Path="ColdCeph.Control/ColdCeph.Control.csproj" />
+  <Project Path="ColdCeph.Control.Tests/ColdCeph.Control.Tests.csproj" />
+  <Project Path="ColdCeph.Architecture.Tests/ColdCeph.Architecture.Tests.csproj" />
+  <Project Path="ColdCeph.E2E.Tests/ColdCeph.E2E.Tests.csproj" />
+</Solution>

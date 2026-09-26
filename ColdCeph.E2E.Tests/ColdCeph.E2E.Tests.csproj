@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+    <PackageReference Include="NUnit" Version="4.4.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="NUnit.Analyzers" Version="4.11.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Xcepto" Version="10.4.0" />
+    <PackageReference Include="Xcepto.Rest" Version="10.4.0" />
+    <PackageReference Include="Xcepto.SSR" Version="10.4.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ColdCeph.Agent\ColdCeph.Agent.csproj" />
+    <ProjectReference Include="..\ColdCeph.Control\ColdCeph.Control.csproj" />
+    <ProjectReference Include="..\ColdCeph.Control.Tests\ColdCeph.Control.Tests.csproj" />
+    <ProjectReference Include="..\ColdCeph.Agent.Tests\ColdCeph.Agent.Tests.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+@using ColdCeph.Core.Features.Devices.DTOs
+@model IReadOnlyList<DeviceDto>
+<h1>Devices</h1>
+<ul>
+@foreach (var device in Model)
+{
+    <li>@device.DeviceId osd=@device.MappedOsdId power=@device.PowerState</li>
+}
+</ul>

@@ -1,0 +1,6 @@
+<h1>Operator login</h1>
+<form method="post" action="/auth/login">
+    @Html.AntiForgeryToken()
+    <label>Password <input type="password" name="password" /></label>
+    <button type="submit">Sign in</button>
+</form>

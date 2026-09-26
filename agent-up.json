@@ -1,0 +1,22 @@
+{
+  "name": "ColdCeph",
+  "applications": [
+    {
+      "name": "Control",
+      "command": "dotnet run --project ColdCeph.Control --no-launch-profile",
+      "install": "dotnet restore coldceph.slnx",
+      "path": "/",
+      "ports": [
+        {
+          "variable": "WEB_PORT",
+          "defaultPort": 8080,
+          "protocol": "http",
+          "healthCheck": "/health"
+        }
+      ]
+    }
+  ],
+  "prompts": {
+    "commitPolicy": "Scope commit messages to the queued slice. Use feat for user-facing additions, fix for user-facing fixes, test for test-only or smoke-validation changes, refactor for no-behavior source changes, chore for maintenance, packaging, CI, or tooling with no customer runtime effect, style for CSS/HTML only, and docs for documentation-only changes."
+  }
+}

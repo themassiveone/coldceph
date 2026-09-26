@@ -1,0 +1,17 @@
+.idea/
+.vscode/
+.vs/
+artifacts/
+TestResults/
+**/obj/
+**/bin/
+*.user
+*.suo
+*.userprefs
+.env
+.env.*
+!.env.example
+tmp/
+.agent-up-dev/
+**/TestResults/
+*.DotSettings.user

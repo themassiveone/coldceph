@@ -1,0 +1,15 @@
+@using ColdCeph.Core.Features.StoragePlane.DTOs
+@model StoragePlaneSnapshot
+<h1>Storage plane</h1>
+<p>State: <strong>@Model.State</strong></p>
+<p>Trusted observation: @Model.Trusted</p>
+<p>Journal: @Model.JournalStep</p>
+<p>Lease holder: @(Model.LeaseHolder ?? "none")</p>
+<form method="post" action="/wake">
+    @Html.AntiForgeryToken()
+    <button type="submit">Wake</button>
+</form>
+<form method="post" action="/sleep">
+    @Html.AntiForgeryToken()
+    <button type="submit">Sleep</button>
+</form>

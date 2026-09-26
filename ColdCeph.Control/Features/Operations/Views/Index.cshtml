@@ -1,0 +1,9 @@
+@using ColdCeph.Core.Features.Operations.DTOs
+@model IReadOnlyList<OperationRecordDto>
+<h1>Operations</h1>
+<ul>
+@foreach (var operation in Model)
+{
+    <li>@operation.StartedAt @operation.Kind @operation.Summary (@operation.Initiator)</li>
+}
+</ul>
