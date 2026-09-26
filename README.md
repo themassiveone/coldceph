@@ -113,6 +113,15 @@ E2E starts a Testcontainers Ceph demo once for the test project (HiveShard-style
 dotnet test coldceph.slnx --filter "FullyQualifiedName~ColdCeph.E2E.Tests"
 ```
 
+Inspect operator HTML without walking the UI. `./cc-debug` signs in and screenshots every
+operator page from a running Control (`WEB_PORT` / `COLDCEPH_OPERATOR_URL`):
+
+```bash
+./cc-debug
+./cc-debug screenshot /hosts
+./cc-debug pages
+```
+
 CI runs both jobs. The E2E job does not start `compose.yaml`; Testcontainers owns the cluster.
 `compose.yaml` is only for local IDE getting-started against a long-lived demo.
 

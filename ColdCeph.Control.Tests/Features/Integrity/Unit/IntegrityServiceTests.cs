@@ -125,6 +125,7 @@ public sealed class IntegrityServiceTests
             Checks = ["TOO_FEW_PGS: too few PGs"]
         };
 
+        _ = integrity.GetIntegrity();
         var raw = integrity.GetRawHealth();
 
         Assert.That(raw.Status, Is.EqualTo("HEALTH_WARN"));
@@ -141,6 +142,7 @@ public sealed class IntegrityServiceTests
             Checks = ["OSD_DOWN: 1 osds down"]
         };
 
+        _ = integrity.GetIntegrity();
         var raw = integrity.GetRawHealth();
 
         Assert.That(raw.Status, Is.Not.EqualTo("HEALTH_OK"));
@@ -160,14 +162,45 @@ public sealed class IntegrityServiceTests
     }
 
     [Test]
-    public void Raw_health_fetches_when_no_snapshot_exists()
+    public void Raw_health_does_not_fetch_when_no_snapshot_exists()
     {
         var (integrity, ceph, _) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_ERR",
+            Summary = "1 osds down",
+            Checks = ["OSD_DOWN: 1 osds down"]
+        };
 
         var raw = integrity.GetRawHealth();
 
-        Assert.That(ceph.HealthDetailCalls, Is.GreaterThan(0));
-        Assert.That(raw.Status, Is.EqualTo("HEALTH_OK"));
+        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(raw.Status, Is.EqualTo("UNAVAILABLE"));
+        Assert.That(raw.Status, Is.Not.EqualTo("HEALTH_ERR"));
+    }
+
+    [Test]
+    public void GetIntegrity_when_ceph_throws_is_unavailable()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.ThrowOnHealth = true;
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Raw.Status, Is.EqualTo("UNAVAILABLE"));
+        Assert.That(snapshot.Predicates.WriteReady, Is.False);
+    }
+
+    [Test]
+    public void GetIntegrity_when_ceph_answers_is_not_unavailable()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.ThrowOnHealth = false;
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_OK"));
+        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("UNAVAILABLE"));
     }
 
     private static (IntegrityService Integrity, FakeCephQueryProvider Ceph, StoragePlaneService Plane) Create()

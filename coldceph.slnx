@@ -7,4 +7,6 @@
   <Project Path="ColdCeph.Control.Tests/ColdCeph.Control.Tests.csproj" />
   <Project Path="ColdCeph.Architecture.Tests/ColdCeph.Architecture.Tests.csproj" />
   <Project Path="ColdCeph.E2E.Tests/ColdCeph.E2E.Tests.csproj" />
+  <Project Path="ColdCeph.Debug/ColdCeph.Debug.csproj" />
+  <Project Path="ColdCeph.Debug.Tests/ColdCeph.Debug.Tests.csproj" />
 </Solution>

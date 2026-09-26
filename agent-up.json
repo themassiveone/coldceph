@@ -4,8 +4,7 @@
     {
       "name": "Control",
       "command": "dotnet run --project ColdCeph.Control --no-launch-profile",
-      "install": "dotnet restore coldceph.slnx",
-      "path": "/",
+      "path": ".",
       "ports": [
         {
           "variable": "WEB_PORT",

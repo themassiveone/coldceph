@@ -1,15 +1,41 @@
-@using ColdCeph.Core.Features.StoragePlane.DTOs
-@model StoragePlaneSnapshot
-<h1>Storage plane</h1>
-<p>State: <strong>@Model.State</strong></p>
-<p>Trusted observation: @Model.Trusted</p>
-<p>Journal: @Model.JournalStep</p>
-<p>Lease holder: @(Model.LeaseHolder ?? "none")</p>
-<form method="post" action="/wake">
-    @Html.AntiForgeryToken()
-    <button type="submit">Wake</button>
-</form>
-<form method="post" action="/sleep">
-    @Html.AntiForgeryToken()
-    <button type="submit">Sleep</button>
-</form>
+@model ColdCeph.Control.Features.StoragePlane.ViewModels.StoragePlanePageViewModel
+@{
+    ViewData["Title"] = "Storage";
+}
+<p class="cc-page-kicker">Storage plane</p>
+<div class="cc-hero">
+    <div>
+        <h1>@Model.Headline</h1>
+        <p class="cc-lead">@Model.Guidance</p>
+        <span class="cc-chip cc-chip-@Model.Tone">@Model.Snapshot.State</span>
+    </div>
+    <div class="cc-actions">
+        @if (Model.CanWake)
+        {
+            <form method="post" action="/wake">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn cc-btn-primary" type="submit">Wake disks</button>
+            </form>
+        }
+        @if (Model.CanSleep)
+        {
+            <form method="post" action="/sleep">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn cc-btn-danger" type="submit">Sleep disks</button>
+            </form>
+        }
+    </div>
+</div>
+<section class="cc-card">
+    <h2>Observation</h2>
+    <dl class="cc-dl">
+        <dt>Trusted</dt>
+        <dd>@(Model.Snapshot.Trusted ? "reconciled against Ceph" : "startup, not yet trusted")</dd>
+        <dt>Journal</dt>
+        <dd>@(Model.Snapshot.JournalStep ?? "none")</dd>
+        <dt>Lease holder</dt>
+        <dd>@(Model.Snapshot.LeaseHolder ?? "none")</dd>
+        <dt>Observed</dt>
+        <dd>@Model.Snapshot.ObservedAt.ToString("u")</dd>
+    </dl>
+</section>

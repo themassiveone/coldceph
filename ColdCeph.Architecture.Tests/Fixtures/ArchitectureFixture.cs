@@ -20,7 +20,8 @@ internal static class ArchitectureFixture
         "ColdCeph.Node.Tests",
         "ColdCeph.Control.Tests",
         "ColdCeph.Architecture.Tests",
-        "ColdCeph.E2E.Tests"
+        "ColdCeph.E2E.Tests",
+        "ColdCeph.Debug.Tests"
     ];
 
     public static readonly string[] AllowedControlSlices =

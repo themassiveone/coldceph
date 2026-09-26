@@ -3,49 +3,72 @@
 @inject StoragePlaneController StoragePlane
 @inject IntegrityController Integrity
 @{
-    var skipCephChrome = Context.Request.Path.StartsWithSegments("/auth/login");
-    var plane = skipCephChrome ? null : StoragePlane.GetState();
-    var health = skipCephChrome ? null : Integrity.GetRawHealth();
-    var waking = plane?.State.ToString() is "Waking" or "Sleeping";
+    var path = Context.Request.Path.Value ?? "/";
+    var login = path.StartsWith("/auth", StringComparison.OrdinalIgnoreCase);
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    var plane = signedIn && !login ? StoragePlane.GetState() : null;
+    var health = signedIn && !login ? Integrity.GetRawHealth() : null;
+    string NavClass(string href)
+        => href == "/"
+            ? (path == "/" ? "cc-nav-link is-current" : "cc-nav-link")
+            : path.StartsWith(href, StringComparison.OrdinalIgnoreCase) ? "cc-nav-link is-current" : "cc-nav-link";
+    string Chip(string tone) => tone switch
+    {
+        "Ready" or "HEALTH_OK" => "cc-chip cc-chip-ok",
+        "Waking" or "Quiescing" or "Sleeping" or "HEALTH_WARN" => "cc-chip cc-chip-busy",
+        "Faulted" or "HEALTH_ERR" => "cc-chip cc-chip-bad",
+        _ => "cc-chip cc-chip-idle"
+    };
 }
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    @if (waking)
-    {
-        <meta http-equiv="refresh" content="5" />
-    }
-    <title>ColdCeph</title>
-    <style>
-        body { font-family: sans-serif; margin: 0; }
-        header { background: #111; color: #eee; padding: 1rem 1.5rem; display: flex; gap: 1.5rem; align-items: baseline; }
-        header a { color: #9cf; }
-        main { padding: 1.5rem; }
-        .chrome { font-size: 0.95rem; }
-        .label { color: #888; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@(ViewData["Title"] ?? "ColdCeph")</title>
+    <link rel="stylesheet" href="/css/operator.css" />
 </head>
 <body>
-<header>
-    <strong>ColdCeph</strong>
-    @if (plane is not null && health is not null)
-    {
-        <span class="chrome"><span class="label">Operational</span> @plane.State</span>
-        <span class="chrome"><span class="label">Ceph</span> @health.Status</span>
-    }
-    <nav>
-        <a href="/">Storage</a>
-        <a href="/integrity">Integrity</a>
-        <a href="/hosts">Hosts</a>
-        <a href="/osds">OSDs</a>
-        <a href="/devices">Devices</a>
-        <a href="/s3">S3</a>
-        <a href="/operations">Operations</a>
-    </nav>
-</header>
-<main>
+@if (login)
+{
     @RenderBody()
-</main>
+}
+else
+{
+    <div class="cc-shell">
+        <header class="cc-top">
+            <a class="cc-brand" href="/">ColdCeph</a>
+            @if (plane is not null && health is not null)
+            {
+                <div class="cc-top-status">
+                    <span class="@Chip(plane.State.ToString())"><span class="label">Operational</span> <b>@plane.State</b></span>
+                    <span class="@Chip(health.Status)"><span class="label">Ceph</span> <b>@health.Status</b></span>
+                </div>
+            }
+            <div class="cc-top-tools">
+                <a class="cc-reload" href="@path">Reload</a>
+            </div>
+        </header>
+        <nav class="cc-rail" aria-label="Operator">
+            <a class="@NavClass("/")" href="/">Storage</a>
+            <a class="@NavClass("/integrity")" href="/integrity">Integrity</a>
+            <a class="@NavClass("/hosts")" href="/hosts">Hosts</a>
+            <a class="@NavClass("/osds")" href="/osds">OSDs</a>
+            <a class="@NavClass("/devices")" href="/devices">Devices</a>
+            <a class="@NavClass("/s3")" href="/s3">S3</a>
+            <a class="@NavClass("/operations")" href="/operations">Operations</a>
+            @if (signedIn)
+            {
+                <form class="cc-rail-foot" method="post" action="/auth/logout">
+                    @Html.AntiForgeryToken()
+                    <button class="cc-ghost" type="submit">Sign out</button>
+                </form>
+            }
+        </nav>
+        <main class="cc-main">
+            @RenderBody()
+        </main>
+    </div>
+}
 </body>
 </html>

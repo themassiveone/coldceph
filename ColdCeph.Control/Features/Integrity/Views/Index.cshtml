@@ -1,13 +1,70 @@
 @using ColdCeph.Core.Features.Integrity.DTOs
 @model IntegritySnapshot
-<h1>Integrity</h1>
-<p>Raw Ceph health: <strong>@Model.Raw.Status</strong></p>
-<p>Last verified clean: @(Model.LastVerifiedCleanAt?.ToString("u") ?? "never")</p>
-<p>Write ready: @Model.Predicates.WriteReady</p>
-<p>Sleep safe: @Model.Predicates.SleepSafe</p>
-<ul>
-@foreach (var check in Model.Checks)
-{
-    <li>@check.Classification — @check.Detail</li>
+@{
+    ViewData["Title"] = "Integrity";
 }
-</ul>
+<p class="cc-page-kicker">Integrity</p>
+<h1>Is the data known safe?</h1>
+<p class="cc-lead">ColdCeph conclusions stay separate from Ceph's own health. Cold <span class="cc-mono">HEALTH_ERR</span> is expected while disks sleep.</p>
+
+<div class="cc-grid">
+    <section class="cc-card">
+        <h2>Cold-storage</h2>
+        <dl class="cc-dl">
+            <dt>Write ready</dt>
+            <dd>@(Model.Predicates.WriteReady ? "yes" : "no")</dd>
+            <dt>Sleep safe</dt>
+            <dd>@(Model.Predicates.SleepSafe ? "yes" : "no")</dd>
+            <dt>Last verified clean</dt>
+            <dd>@(Model.LastVerifiedCleanAt?.ToString("u") ?? "never")</dd>
+            <dt>Summary</dt>
+            <dd>@(Model.LastVerifiedCleanSummary ?? "none")</dd>
+        </dl>
+    </section>
+    <section class="cc-card">
+        <h2>Ceph health</h2>
+        <p>Raw Ceph health: <strong>@Model.Raw.Status</strong></p>
+        <p>@Model.Raw.Summary</p>
+        @if (Model.Raw.Checks.Count > 0)
+        {
+            <ul class="cc-checks">
+                @foreach (var check in Model.Raw.Checks)
+                {
+                    <li>@check</li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+<section class="cc-card">
+    <h2>Classified checks</h2>
+    @if (Model.Checks.Count == 0)
+    {
+        <p class="cc-empty">No classified checks in this snapshot.</p>
+    }
+    else
+    {
+        <div class="cc-table-wrap">
+            <table class="cc-table">
+                <thead>
+                    <tr>
+                        <th>Check</th>
+                        <th>Class</th>
+                        <th>Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var check in Model.Checks)
+                {
+                    <tr>
+                        <td>@check.Name</td>
+                        <td>@check.Classification</td>
+                        <td>@check.Detail</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

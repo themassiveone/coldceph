@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Capture ColdCeph operator HTML the way au-debug captures Agent-Up surfaces.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec dotnet run --project "$SCRIPT_DIR/ColdCeph.Debug/ColdCeph.Debug.csproj" --no-launch-profile -- "$@"

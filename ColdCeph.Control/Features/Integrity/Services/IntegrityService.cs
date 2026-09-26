@@ -32,14 +32,31 @@ public sealed class IntegrityService
     {
         lock (_snapshotGate)
         {
-            if (_last is not null)
-                return _last.Raw;
+            return _last?.Raw ?? new CephHealthRaw
+            {
+                Status = "UNAVAILABLE",
+                Summary = "Open Integrity to read Ceph health.",
+                Checks = []
+            };
         }
-
-        return GetIntegrity().Raw;
     }
 
     public IntegritySnapshot GetIntegrity()
+    {
+        try
+        {
+            return ReadIntegrity();
+        }
+        catch (Exception exception)
+        {
+            var snapshot = Unavailable(exception.Message);
+            lock (_snapshotGate)
+                _last = snapshot;
+            return snapshot;
+        }
+    }
+
+    private IntegritySnapshot ReadIntegrity()
     {
         var raw = _ceph.GetHealthDetail();
         var plane = _plane.GetState().State;
@@ -61,6 +78,29 @@ public sealed class IntegrityService
             _last = snapshot;
         return snapshot;
     }
+
+    private IntegritySnapshot Unavailable(string summary)
+        => new()
+        {
+            Raw = new CephHealthRaw
+            {
+                Status = "UNAVAILABLE",
+                Summary = summary,
+                Checks = []
+            },
+            Checks = [],
+            Predicates = new ReadinessPredicates
+            {
+                ControlPlaneAvailable = false,
+                OsdPlaneExpected = false,
+                ReadReady = false,
+                WriteReady = false,
+                SleepSafe = false
+            },
+            LastVerifiedCleanAt = _repository.GetLastVerifiedCleanAt(),
+            LastVerifiedCleanSummary = _repository.GetLastVerifiedCleanSummary(),
+            ObservedAt = _clock.UtcNow
+        };
 
     private static IReadOnlyList<ClassifiedHealthCheck> Classify(CephHealthRaw raw, StoragePlaneState plane)
     {

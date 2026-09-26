@@ -134,6 +134,7 @@ public static class AppComposition
 
             await next();
         });
+        app.UseStaticFiles();
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();

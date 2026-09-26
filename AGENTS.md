@@ -29,6 +29,7 @@ Projects live at repo root. Target framework is `net10.0` with nullable referenc
 | Matching `*.Tests` | NUnit, builders, `Features/<Slice>/<Kind>/`. |
 | `ColdCeph.Architecture.Tests` | Filesystem and ArchUnitNET rules, including slice boundaries. |
 | `ColdCeph.E2E.Tests` | Thin Xcepto journeys only. |
+| `ColdCeph.Debug` | Maintainer visual-debug CLI (`./cc-debug`). Not a product runtime. |
 
 Debs: `coldceph-control`, `coldceph-node`.
 
@@ -124,8 +125,10 @@ standby disks.
 
 Classic MVC, no Blazor/SPA/HTMX. Cookie operator auth in **Auth** (appliance password, not
 multi-tenant Identity). Antiforgery on POSTs. `/v1` returns 401/403 without a login redirect.
-Browser GETs to operator HTML pages send the operator to `/auth/login`. Request-time HTML;
-optional meta refresh while StoragePlane is `WAKING`/`SLEEPING`.
+Browser GETs to operator HTML pages send the operator to `/auth/login`. Request-time HTML.
+Pages must not auto-refresh; the operator reloads for a new reading. Wake and Sleep are
+StoragePlane POSTs and only appear when that transition is legal (Wake from `COLD`, Sleep
+from `READY`).
 
 A Razor `ViewLocationExpander` keeps views under `Features/<Slice>/Views/`. Each slice Views
 folder includes `_ViewStart.cshtml` so Razor applies `_Layout` (it discovers ViewStart from the
@@ -191,6 +194,11 @@ E2E job that only runs `ColdCeph.E2E.Tests`. The `[SetUpFixture]` starts Ceph vi
 
 `agent-up.json` launches local Control with injected `WEB_PORT`. Applications consume that
 variable; do not hard-code the development operator port when integrating with Agent-Up.
+
+`./cc-debug` (or `./cc-debug screenshot`) signs in and captures every operator HTML page from a
+running Control. Optional path limits the capture. `pages` lists routes. Control URL is
+`COLDCEPH_OPERATOR_URL` or `http://127.0.0.1:$WEB_PORT`. Screenshots write under
+`.git/coldceph/debug/`. Do not walk login or click pages by hand for visual inspection.
 
 # Local development
 

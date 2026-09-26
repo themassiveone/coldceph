@@ -1,5 +1,6 @@
 using ColdCeph.Control.Features.Auth.Controllers;
 using ColdCeph.Control.Features.StoragePlane.Services;
+using ColdCeph.Control.Features.StoragePlane.ViewModels;
 using ColdCeph.Core.Features.Operations.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +20,7 @@ public sealed class StoragePlanePagesController : Controller
     }
 
     [HttpGet("/")]
-    public IActionResult Index() => View("Index", _plane.GetState());
+    public IActionResult Index() => View("Index", StoragePlanePageViewModel.From(_plane.GetState()));
 
     [HttpPost("/wake")]
     [ValidateAntiForgeryToken]

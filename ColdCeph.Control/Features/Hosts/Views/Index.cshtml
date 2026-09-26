@@ -1,59 +1,124 @@
 @model ColdCeph.Control.Features.Hosts.ViewModels.HostsPageViewModel
-<h1>Hosts</h1>
+@{
+    ViewData["Title"] = "Hosts";
+}
+<p class="cc-page-kicker">Hosts</p>
+<h1>Machines</h1>
+<p class="cc-lead">A Node asks to join. You allow it once. Deny blocks that machine until you allow it.</p>
 
-<h2>Waiting to join</h2>
-@if (Model.Pending.Count == 0)
-{
-    <p>No nodes are waiting.</p>
-}
-else
-{
-    <ul>
-    @foreach (var request in Model.Pending)
+<section class="cc-card">
+    <h2>Waiting to join</h2>
+    @if (Model.Pending.Count == 0)
     {
-        <li>
-            @request.Hostname — @request.Endpoint
-            <form method="post" action="/hosts/@request.HostId/approve" style="display:inline">
-                @Html.AntiForgeryToken()
-                <button type="submit">Allow</button>
-            </form>
-            <form method="post" action="/hosts/@request.HostId/deny" style="display:inline">
-                @Html.AntiForgeryToken()
-                <button type="submit">Deny</button>
-            </form>
-        </li>
+        <p class="cc-empty">No join requests. Start a Node with <span class="cc-mono">COLDCEPH_CONTROL_ENDPOINT</span> pointed at this Control.</p>
     }
-    </ul>
-}
+    else
+    {
+        <div class="cc-table-wrap">
+            <table class="cc-table">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Endpoint</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var request in Model.Pending)
+                {
+                    <tr>
+                        <td>@request.Hostname</td>
+                        <td class="cc-mono">@request.Endpoint</td>
+                        <td>
+                            <div class="cc-row-actions">
+                                <form method="post" action="/hosts/@request.HostId/approve">
+                                    @Html.AntiForgeryToken()
+                                    <button class="cc-btn cc-btn-primary" type="submit">Allow</button>
+                                </form>
+                                <form method="post" action="/hosts/@request.HostId/deny">
+                                    @Html.AntiForgeryToken()
+                                    <button class="cc-btn cc-btn-danger" type="submit">Deny</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
 
-<h2>Enrolled</h2>
-@if (Model.Enrolled.Count == 0)
-{
-    <p>No enrolled nodes.</p>
-}
-else
-{
-    <ul>
-    @foreach (var host in Model.Enrolled)
+<section class="cc-card">
+    <h2>Enrolled</h2>
+    @if (Model.Enrolled.Count == 0)
     {
-        <li>@host.Hostname — @(host.Alive ? "alive" : "stale") — @host.Endpoint</li>
+        <p class="cc-empty">No machines enrolled. Allowed Nodes show up here and stay alive by heartbeat.</p>
     }
-    </ul>
-}
+    else
+    {
+        <div class="cc-table-wrap">
+            <table class="cc-table">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Liveness</th>
+                        <th>Endpoint</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var host in Model.Enrolled)
+                {
+                    <tr>
+                        <td>@host.Hostname</td>
+                        <td>
+                            @if (host.Alive)
+                            {
+                                <span class="cc-chip cc-chip-ok">alive</span>
+                            }
+                            else
+                            {
+                                <span class="cc-chip cc-chip-busy">stale</span>
+                            }
+                        </td>
+                        <td class="cc-mono">@host.Endpoint</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
 
 @if (Model.Blocked.Count > 0)
 {
-    <h2>Blocked</h2>
-    <ul>
-    @foreach (var request in Model.Blocked)
-    {
-        <li>
-            @request.Hostname — @request.Endpoint
-            <form method="post" action="/hosts/@request.HostId/approve" style="display:inline">
-                @Html.AntiForgeryToken()
-                <button type="submit">Allow</button>
-            </form>
-        </li>
-    }
-    </ul>
+    <section class="cc-card">
+        <h2>Blocked</h2>
+        <div class="cc-table-wrap">
+            <table class="cc-table">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Endpoint</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var request in Model.Blocked)
+                {
+                    <tr>
+                        <td>@request.Hostname</td>
+                        <td class="cc-mono">@request.Endpoint</td>
+                        <td>
+                            <form method="post" action="/hosts/@request.HostId/approve">
+                                @Html.AntiForgeryToken()
+                                <button class="cc-btn cc-btn-primary" type="submit">Allow</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
 }

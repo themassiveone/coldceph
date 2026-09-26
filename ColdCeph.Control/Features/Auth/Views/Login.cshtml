@@ -1,6 +1,19 @@
-<h1>Operator login</h1>
-<form method="post" action="/auth/login">
-    @Html.AntiForgeryToken()
-    <label>Password <input type="password" name="password" /></label>
-    <button type="submit">Sign in</button>
-</form>
+@{
+    ViewData["Title"] = "Sign in";
+    Layout = "_Layout";
+}
+<div class="cc-login">
+    <section class="cc-login-card">
+        <p class="cc-page-kicker">ColdCeph</p>
+        <h1>Operator login</h1>
+        <p class="cc-lead">Appliance password. There is no account directory.</p>
+        <form method="post" action="/auth/login">
+            @Html.AntiForgeryToken()
+            <label class="cc-field">
+                <span>Password</span>
+                <input type="password" name="password" autocomplete="current-password" autofocus />
+            </label>
+            <button class="cc-btn cc-btn-primary" type="submit">Sign in</button>
+        </form>
+    </section>
+</div>

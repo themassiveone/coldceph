@@ -1,6 +1,21 @@
 @using ColdCeph.Core.Features.S3.DTOs
 @model S3PendingWorkDto
-<h1>S3 admission</h1>
-<p>Pending work: @Model.HasPendingWork</p>
-<p>Active: @Model.ActiveCount queued: @Model.QueuedCount</p>
-<p>Last activity: @(Model.LastActivity?.ToString("u") ?? "none")</p>
+@{
+    ViewData["Title"] = "S3";
+}
+<p class="cc-page-kicker">S3</p>
+<h1>Admission</h1>
+<p class="cc-lead">This page does not wake the plane. Pending work is a signal StoragePlane reads on its own.</p>
+<section class="cc-card">
+    <h2>Current work</h2>
+    <dl class="cc-dl">
+        <dt>Pending work</dt>
+        <dd>@(Model.HasPendingWork ? "yes" : "no")</dd>
+        <dt>Active</dt>
+        <dd>@Model.ActiveCount</dd>
+        <dt>Queued</dt>
+        <dd>@Model.QueuedCount</dd>
+        <dt>Last activity</dt>
+        <dd>@(Model.LastActivity?.ToString("u") ?? "none")</dd>
+    </dl>
+</section>
