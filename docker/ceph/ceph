@@ -5,10 +5,10 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 compose_file="${COLDCEPH_CEPH_COMPOSE:-$repo/compose.yaml}"
 
-if ! docker compose -f "$compose_file" --project-directory "$repo" ps --status running --services 2>/dev/null | grep -qx ceph; then
+if ! docker compose -f "$compose_file" --project-directory "$repo" ps --status running --services 2>/dev/null | grep -qx mon; then
   echo "Ceph is not running. Start it with: docker compose up -d" >&2
-  echo "Wait until 'docker compose ps' shows ceph as healthy (first boot can take a couple of minutes)." >&2
+  echo "Wait until 'docker compose ps' shows mon as healthy and three storage nodes up." >&2
   exit 1
 fi
 
-exec docker compose -f "$compose_file" --project-directory "$repo" exec -T ceph ceph "$@"
+exec docker compose -f "$compose_file" --project-directory "$repo" exec -T mon ceph "$@"

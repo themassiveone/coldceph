@@ -1,49 +1,171 @@
-# Tiny local Ceph for ColdCeph development.
-# One container, four real daemons: MON + MGR (control plane), OSD (data), RGW (S3).
-# Override any ${VAR} by copying .env.example to .env.
+# Local multi-node Ceph for ColdCeph development.
+# Each service is one host. Three storage nodes, each with one ramdisk OSD.
+# Fully ephemeral: no named volumes. compose down discards the cluster.
+# E2E does not use this file.
+x-image: &ceph-image
+  image: ${CEPH_IMAGE:-quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8}
+
+x-scripts: &ceph-scripts
+  - ./docker/ceph:/opt/coldceph:ro
+
+x-cluster-env: &cluster-env
+  CLUSTER: ceph
+  MON_IP: ${CEPH_MON_IP:-172.28.90.10}
+  CEPH_PUBLIC_NETWORK: ${CEPH_PUBLIC_NETWORK:-172.28.90.0/24}
+  CEPH_CONFIG_PORT: ${CEPH_CONFIG_PORT:-3799}
+
+x-storage-node: &storage-node
+  <<: *ceph-image
+  privileged: true
+  init: true
+  entrypoint: ["/bin/bash", "/opt/coldceph/osd-node-entrypoint.sh"]
+  environment:
+    <<: *cluster-env
+    CEPH_VOLUME_SKIP_RESTORECON: "1"
+    OSD_SIZE_MB: ${OSD_SIZE_MB:-1024}
+  volumes: *ceph-scripts
+  tmpfs:
+    - /etc/ceph
+    - /var/lib/ceph
+    - /var/run/ceph
+    - /mnt/ramdisk:size=1536M
+  depends_on:
+    mon:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "pgrep -x ceph-osd >/dev/null"]
+    interval: 5s
+    timeout: 5s
+    retries: 36
+    start_period: 180s
+  stop_grace_period: 10s
+
 services:
-  ceph:
-    image: ${CEPH_IMAGE:-quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8}
-    container_name: ${CEPH_CONTAINER_NAME:-coldceph-ceph}
-    hostname: ${CEPH_HOSTNAME:-ceph}
-    entrypoint: ["/bin/bash", "/opt/coldceph/demo-entrypoint.sh"]
-    privileged: true
-    shm_size: 1gb
+  mon:
+    <<: *ceph-image
+    container_name: ${CEPH_MON_CONTAINER:-coldceph-mon}
+    hostname: mon
+    init: true
+    entrypoint: ["/bin/bash", "/opt/coldceph/mon-entrypoint.sh"]
     environment:
-      NETWORK_AUTO_DETECT: ${NETWORK_AUTO_DETECT:-0}
-      MON_IP: ${CEPH_IPV4:-172.28.90.10}
-      CEPH_PUBLIC_NETWORK: ${CEPH_PUBLIC_NETWORK:-172.28.90.0/24}
-      DEMO_DAEMONS: ${DEMO_DAEMONS:-mon,mgr,osd,rgw}
-      CEPH_DEMO_UID: ${CEPH_DEMO_UID:-coldceph}
-      CEPH_DEMO_ACCESS_KEY: ${CEPH_DEMO_ACCESS_KEY:-coldceph}
-      CEPH_DEMO_SECRET_KEY: ${CEPH_DEMO_SECRET_KEY:-coldcephsecret}
-      CEPH_DEMO_BUCKET: ${CEPH_DEMO_BUCKET:-cold}
-      RGW_CIVETWEB_PORT: ${RGW_CIVETWEB_PORT:-8080}
-      RGW_NAME: ${RGW_NAME:-localhost}
+      <<: *cluster-env
+      CEPH_DAEMON: MON
+      NETWORK_AUTO_DETECT: 0
       CEPH_DASHBOARD: ${CEPH_DASHBOARD:-0}
     ports:
-      - "${RGW_HOST_PORT:-7481}:${RGW_CIVETWEB_PORT:-8080}"
       - "${MON_HOST_PORT:-3300}:3300"
     networks:
       default:
-        ipv4_address: ${CEPH_IPV4:-172.28.90.10}
-    volumes:
-      - ./docker/ceph/demo-entrypoint.sh:/opt/coldceph/demo-entrypoint.sh:ro
-      - ceph-etc:/etc/ceph
-      - ceph-lib:/var/lib/ceph
+        ipv4_address: ${CEPH_MON_IP:-172.28.90.10}
+    volumes: *ceph-scripts
     tmpfs:
+      - /etc/ceph
+      - /var/lib/ceph
       - /var/run/ceph
     healthcheck:
-      test: ["CMD", "ceph", "-s"]
+      test:
+        [
+          "CMD-SHELL",
+          "ceph -s >/dev/null && curl -sf http://127.0.0.1:${CEPH_CONFIG_PORT:-3799}/bootstrap-osd.keyring | grep -q client",
+        ]
       interval: 5s
       timeout: 10s
       retries: 36
-      start_period: 90s
-    restart: unless-stopped
+      start_period: 45s
+    stop_grace_period: 10s
 
-volumes:
-  ceph-etc:
-  ceph-lib:
+  mgr:
+    <<: *ceph-image
+    container_name: ${CEPH_MGR_CONTAINER:-coldceph-mgr}
+    hostname: mgr
+    init: true
+    entrypoint: ["/bin/bash", "/opt/coldceph/mgr-entrypoint.sh"]
+    environment:
+      <<: *cluster-env
+      CEPH_DAEMON: MGR
+      CEPH_DASHBOARD: ${CEPH_DASHBOARD:-0}
+    networks:
+      default:
+        ipv4_address: ${CEPH_MGR_IP:-172.28.90.11}
+    volumes: *ceph-scripts
+    tmpfs:
+      - /etc/ceph
+      - /var/lib/ceph
+      - /var/run/ceph
+    depends_on:
+      mon:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x ceph-mgr >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 45s
+    stop_grace_period: 10s
+
+  node-a:
+    <<: *storage-node
+    container_name: ${CEPH_NODE_A_CONTAINER:-coldceph-node-a}
+    hostname: node-a
+    networks:
+      default:
+        ipv4_address: ${CEPH_NODE_A_IP:-172.28.90.21}
+
+  node-b:
+    <<: *storage-node
+    container_name: ${CEPH_NODE_B_CONTAINER:-coldceph-node-b}
+    hostname: node-b
+    networks:
+      default:
+        ipv4_address: ${CEPH_NODE_B_IP:-172.28.90.22}
+
+  node-c:
+    <<: *storage-node
+    container_name: ${CEPH_NODE_C_CONTAINER:-coldceph-node-c}
+    hostname: node-c
+    networks:
+      default:
+        ipv4_address: ${CEPH_NODE_C_IP:-172.28.90.23}
+
+  rgw:
+    <<: *ceph-image
+    container_name: ${CEPH_RGW_CONTAINER:-coldceph-rgw}
+    hostname: rgw
+    init: true
+    entrypoint: ["/bin/bash", "/opt/coldceph/rgw-entrypoint.sh"]
+    environment:
+      <<: *cluster-env
+      CEPH_DAEMON: RGW
+      RGW_CIVETWEB_PORT: "7480"
+      RGW_FRONTEND: "beast port=7480"
+      RGW_NAME: ${RGW_NAME:-localhost}
+      CEPH_DEMO_UID: ${CEPH_DEMO_UID:-coldceph}
+      CEPH_DEMO_ACCESS_KEY: ${CEPH_DEMO_ACCESS_KEY:-coldceph}
+      CEPH_DEMO_SECRET_KEY: ${CEPH_DEMO_SECRET_KEY:-coldcephsecret}
+    ports:
+      - "${RGW_HOST_PORT:-7481}:7480"
+    networks:
+      default:
+        ipv4_address: ${CEPH_RGW_IP:-172.28.90.30}
+    volumes: *ceph-scripts
+    tmpfs:
+      - /etc/ceph
+      - /var/lib/ceph
+      - /var/run/ceph
+    depends_on:
+      node-a:
+        condition: service_healthy
+      node-b:
+        condition: service_healthy
+      node-c:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sS -o /dev/null --max-time 3 http://127.0.0.1:7480/"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
+    stop_grace_period: 10s
 
 networks:
   default:

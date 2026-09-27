@@ -202,20 +202,25 @@ running Control. Optional path limits the capture. `pages` lists routes. Control
 
 # Local development
 
-Root `compose.yaml` is a tiny representative Ceph (MON, MGR, OSD, RGW in one privileged demo
-container) for **local IDE getting-started only**. E2E does not use it; the Xcepto
-`[SetUpFixture]` starts the same image through Testcontainers. Pin `CEPH_IMAGE` to a daemon tag
-that still ships `demo.sh` (`v7.0.3-stable-7.0-quincy-centos-stream8`); `latest-reef` does not.
-The image `demo` command is not restart-safe with named volumes on its own. Two restart
-failures are handled in compose: (1) `docker/ceph/demo-entrypoint.sh` seeds the RGW demo-user
-sentinel (`/opt/ceph-container/tmp` is not on the volumes) so `user create` does not `set -e`
-exit when `coldceph` already exists; (2) the compose network is a pinned subnet with a static
-`MON_IP` (`172.28.90.10`) so a recreated container can bind the address stored in the monmap.
-`/var/run/ceph` is tmpfs. A monmap from a previous dynamic Docker IP cannot be repaired — wipe
-once with `docker compose down -v`. Ready still means `ceph -s` healthy plus RGW on host 7481.
-Credential and port defaults live in `.env.example` and in the Control/Node
-`Properties/launchSettings.json` profiles. Every default is overridable with the same env var
-name. Control runs with zero nodes. A Node asks to join with `POST /v1/hosts/join` (no join
+Root `compose.yaml` is a **multi-host** Ceph for **local IDE getting-started only**: one container
+per node (`mon`, `mgr`, `node-a`/`node-b`/`node-c`, `rgw`). Each storage node has one BlueStore OSD
+on a tmpfs ramdisk (loop device, default 1GiB). Replica size 3 places one copy on each storage
+host. E2E does not use this file; the Xcepto `[SetUpFixture]` still starts a single Testcontainers
+`demo` container. Pin `CEPH_IMAGE` to a daemon tag that still ships the ceph-container entrypoints
+(`v7.0.3-stable-7.0-quincy-centos-stream8`); `latest-reef` does not.
+
+The cluster is fully ephemeral: no named volumes. MON, MGR, OSD, RGW, and `/etc/ceph` live on
+tmpfs. `docker compose down` discards the cluster; `docker compose up` always bootstraps a new
+one. Storage nodes fetch conf/keyrings from the monitor over the compose network (HTTP on
+`CEPH_CONFIG_PORT`, not published to the host). If a storage container is recreated while the
+monitor is still up, its entrypoint **purges that hostname’s old OSDs** then prepares a fresh
+ramdisk OSD so CRUSH matches the live disks. That purge is compose bootstrap only — StoragePlane
+must still never `out` / `purge` / destroy. The compose network is a pinned subnet with a static
+`MON_IP` (`172.28.90.10`). Ready means `ceph osd tree` shows three hosts, `ceph -s` is healthy, and
+RGW answers on host 7481. The RGW entrypoint creates the `coldceph` S3 user once
+radosgw is listening. Credential and port defaults live in `.env.example` and in the
+Control/Node `Properties/launchSettings.json` profiles. Every default is overridable
+with the same env var name. Control runs with zero nodes. A Node asks to join with `POST /v1/hosts/join` (no join
 token) and `X-ColdCeph-Node-Endpoint`. Hosts keeps the request **pending** until the operator
 Allows it on `/hosts`. Deny blocks that node until Allow. Optional `COLDCEPH_NODE_ENDPOINT` is
 configured discovery: Control seeds that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only

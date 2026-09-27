@@ -44,22 +44,22 @@ State lives on a local SSD path (`/var/lib/coldceph`), never on the HDDs being p
 
 ## Getting started (local Ceph)
 
-This repo ships a tiny but representative Ceph: one container running **MON**, **MGR**, **OSD**, and **RGW**. Start it, then run Control and Node from the IDE.
+This repo ships a **multi-host** Ceph: one container per node (`mon`, `mgr`, three storage
+nodes, `rgw`). Each storage node (`node-a` / `node-b` / `node-c`) runs one BlueStore OSD on a
+tiny ramdisk. Start that, then run Control and Node from the IDE.
 
 Defaults are baked in. Copy `.env.example` only if you want to change them.
 
 ```bash
 cp .env.example .env          # optional
-docker compose up -d
-docker compose ps             # wait until ceph is healthy (first boot can take a couple of minutes)
+docker compose up -d --wait
+docker/ceph/ceph osd tree     # three hosts, one OSD each
 ```
 
-A later `docker compose up` must **rejoin** the named volumes. Compose pins the container IP
-(`172.28.90.10`) so the monitor can bind after a recreate, and `docker/ceph/demo-entrypoint.sh`
-seeds the image’s demo-user sentinel so `demo.sh` does not exit on `user: coldceph exists`.
-Stillstand is `ceph -w` as PID 1 after a `SUCCESS` log line, then `healthy` on
-`docker compose ps`. A cluster written under a previous Docker IP cannot rejoin — wipe once
-with `docker compose down -v` and let first boot run again.
+First boot takes a couple of minutes (OSD prepare + peering with size 3). The cluster is
+ephemeral: no named volumes, Ceph state is tmpfs. `docker compose down` wipes it;
+`docker compose up` bootstraps a new cluster. Compose pins `MON_IP` (`172.28.90.10`). Ready is
+`ceph -s` healthy, three OSDs up, and RGW on host 7481.
 
 Then start **ColdCeph.Control**, then **ColdCeph.Node**. Control does not need a Node. The Node
 asks to join; open **Hosts** and click **Allow**. Open **http://127.0.0.1:8080** or
@@ -89,7 +89,8 @@ aws --endpoint-url http://127.0.0.1:7480 s3 ls \
   --access-key coldceph --secret-key coldcephsecret
 ```
 
-The compose OSD lives inside Docker. The host Node will not systemd-manage those container OSDs; it is still the node you launch from the IDE so Control has a live node endpoint.
+The compose OSDs live inside the three storage containers. A ColdCeph.Node you launch from the
+IDE does not systemd-manage those OSDs; it is still the node endpoint Control enrolls on `/hosts`.
 
 Talk to Ceph without installing `ceph-common`:
 
@@ -123,6 +124,6 @@ operator page from a running Control (`WEB_PORT` / `COLDCEPH_OPERATOR_URL`):
 ```
 
 CI runs both jobs. The E2E job does not start `compose.yaml`; Testcontainers owns the cluster.
-`compose.yaml` is only for local IDE getting-started against a long-lived demo.
+`compose.yaml` is only for local IDE getting-started against a long-lived multi-host cluster.
 
 Under Agent-Up, Control uses `--no-launch-profile` and consumes `WEB_PORT` from `agent-up.json`. Add the same `COLDCEPH_*` variables there if that Control process should also target compose Ceph.
