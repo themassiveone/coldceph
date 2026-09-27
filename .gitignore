@@ -1,6 +1,7 @@
 .idea/
 .vscode/
 .vs/
+node_modules/
 artifacts/
 TestResults/
 **/obj/

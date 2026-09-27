@@ -210,7 +210,10 @@ GitHub Release assets.
 
 CI: all branches run unit tests (`dotnet test` excluding `ColdCeph.E2E.Tests`) and a separate
 E2E job that only runs `ColdCeph.E2E.Tests`. The `[SetUpFixture]` starts Ceph via Testcontainers.
-`main`/`v*` publish debs + checksums after both jobs pass.
+CI plans one version before those jobs: non-`main` runs use `0.0.0-ci.<run>`, while serialized
+`main` runs use semantic-release with Conventional Commits to determine the next SemVer. After
+both test jobs pass, semantic-release publishes the two versioned debs plus checksums, creates the
+`v<version>` tag and GitHub Release, and skips publishing when no release-worthy commit exists.
 
 `agent-up.json` launches local Control with injected `WEB_PORT`. Applications consume that
 variable; do not hard-code the development operator port when integrating with Agent-Up.

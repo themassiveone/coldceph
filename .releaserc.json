@@ -1,0 +1,36 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits"
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "artifacts/debs/coldceph-control_*_amd64.deb",
+            "label": "ColdCeph Control (Linux x64 .deb)"
+          },
+          {
+            "path": "artifacts/debs/coldceph-node_*_amd64.deb",
+            "label": "ColdCeph Node (Linux x64 .deb)"
+          },
+          {
+            "path": "artifacts/debs/SHA256SUMS",
+            "label": "SHA-256 checksums"
+          }
+        ]
+      }
+    ]
+  ]
+}

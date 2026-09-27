@@ -17,6 +17,7 @@ publish() {
     --runtime "$rid" \
     --self-contained true \
     -p:PublishSingleFile=false \
+    -p:Version="$version" \
     -o "$dest"
 }
 
