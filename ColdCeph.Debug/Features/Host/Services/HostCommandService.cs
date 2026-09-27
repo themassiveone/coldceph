@@ -20,7 +20,7 @@ public sealed class HostCommandService
         {
             "pages" => Task.FromResult(_pages.WriteCatalog()),
             "screenshot" => _pages.ScreenshotAsync(command.PagePath, cancellationToken),
-            "up" => Task.FromResult(_compose.Up(command.RebuildImages)),
+            "up" => Task.FromResult(_compose.Up()),
             "down" => Task.FromResult(_compose.Down()),
             "status" => Task.FromResult(_compose.Status()),
             "allow" => _pages.AllowAsync(command.HostId, cancellationToken),

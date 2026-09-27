@@ -16,9 +16,6 @@ public sealed class HttpNodeDevicesClient : INodeDevicesClient
         _config = config;
     }
 
-    public IReadOnlyList<DeviceDto> List(Uri endpoint)
-        => Client(endpoint).GetFromJsonAsync<IReadOnlyList<DeviceDto>>("/v1/devices").GetAwaiter().GetResult() ?? [];
-
     public DeviceMutationResult Wake(Uri endpoint, DeviceMutationRequest request)
         => Post(endpoint, $"/v1/devices/{request.DeviceId}/wake", request);
 

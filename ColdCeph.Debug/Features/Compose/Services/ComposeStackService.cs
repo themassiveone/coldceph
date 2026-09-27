@@ -15,11 +15,9 @@ public sealed class ComposeStackService
         _control = control;
     }
 
-    public void Up(bool rebuildImages)
+    public void Up()
     {
-        Console.Write(_compose.Run(rebuildImages
-            ? ["up", "-d", "--build", "--wait"]
-            : ["up", "-d", "--wait"]));
+        Console.Write(_compose.Run("up", "-d", "--wait"));
         if (!_health.IsReady())
             _control.Start();
     }

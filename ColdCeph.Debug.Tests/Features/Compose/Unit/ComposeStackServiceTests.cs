@@ -14,7 +14,7 @@ public sealed class ComposeStackServiceTests
         var control = new RecordingControlProcess();
         var stack = new ComposeStackService(compose, health, control);
 
-        stack.Up(rebuildImages: false);
+        stack.Up();
 
         Assert.That(compose.Calls, Has.Count.EqualTo(1));
         Assert.That(compose.Calls[0], Is.EqualTo(new[] { "up", "-d", "--wait" }));
@@ -28,21 +28,21 @@ public sealed class ComposeStackServiceTests
         var control = new RecordingControlProcess();
         var stack = new ComposeStackService(compose, new StubControlHealth(ready: true), control);
 
-        stack.Up(rebuildImages: false);
+        stack.Up();
 
         Assert.That(compose.Calls[0], Is.EqualTo(new[] { "up", "-d", "--wait" }));
         Assert.That(control.Starts, Is.EqualTo(0));
     }
 
     [Test]
-    public void Up_rebuilds_images_only_when_requested()
+    public void Up_does_not_rebuild_images()
     {
         var compose = new RecordingComposeCli();
         var stack = new ComposeStackService(compose, new StubControlHealth(ready: true), new RecordingControlProcess());
 
-        stack.Up(rebuildImages: true);
+        stack.Up();
 
-        Assert.That(compose.Calls[0], Is.EqualTo(new[] { "up", "-d", "--build", "--wait" }));
+        Assert.That(compose.Calls[0], Does.Not.Contain("--build"));
     }
 
     [Test]
@@ -52,7 +52,7 @@ public sealed class ComposeStackServiceTests
         var control = new RecordingControlProcess();
         var stack = new ComposeStackService(compose, new StubControlHealth(ready: false), control);
 
-        Assert.That(() => stack.Up(rebuildImages: false), Throws.InvalidOperationException);
+        Assert.That(() => stack.Up(), Throws.InvalidOperationException);
         Assert.That(control.Starts, Is.EqualTo(0));
     }
 
@@ -84,14 +84,14 @@ public sealed class ComposeStackServiceTests
     [Test]
     public void Status_asks_compose_for_ps_without_mutating()
     {
-        var compose = new RecordingComposeCli { Output = "cc-a Up" };
+        var compose = new RecordingComposeCli { Output = "mon Up" };
         var control = new RecordingControlProcess();
         var stack = new ComposeStackService(compose, new StubControlHealth(ready: true), control);
 
         var status = stack.Status();
 
         Assert.That(compose.Calls[0], Is.EqualTo(new[] { "ps", "-a" }));
-        Assert.That(status, Does.Contain("cc-a Up"));
+        Assert.That(status, Does.Contain("mon Up"));
         Assert.That(status, Does.Contain("control: ready"));
         Assert.That(control.Starts, Is.EqualTo(0));
         Assert.That(control.Stops, Is.EqualTo(0));

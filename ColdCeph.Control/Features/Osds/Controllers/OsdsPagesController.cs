@@ -1,3 +1,4 @@
+using ColdCeph.Control.Features.Osds.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,5 +15,10 @@ public sealed class OsdsPagesController : Controller
     }
 
     [HttpGet("/osds")]
-    public IActionResult Index() => View("Index", _osds.ListOsds());
+    public IActionResult Index()
+        => View("Index", new OsdsPageViewModel
+        {
+            Osds = _osds.ListOsds(),
+            Errors = _osds.ListObservationErrors()
+        });
 }

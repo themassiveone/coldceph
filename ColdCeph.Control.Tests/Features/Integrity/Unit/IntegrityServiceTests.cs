@@ -244,6 +244,65 @@ public sealed class IntegrityServiceTests
         Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("UNAVAILABLE"));
     }
 
+    [Test]
+    public void GetLastIntegrity_does_not_query_ceph()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_ERR",
+            Summary = "1 osds down",
+            Checks = ["OSD_DOWN: 1 osds down"]
+        };
+
+        var snapshot = integrity.GetLastIntegrity();
+
+        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(snapshot.Raw.Status, Is.EqualTo("UNAVAILABLE"));
+        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("HEALTH_ERR"));
+    }
+
+    [Test]
+    public void GetLastIntegrity_returns_the_snapshot_from_the_last_get()
+    {
+        var (integrity, ceph, _) = Create();
+        _ = integrity.GetIntegrity();
+        var calls = ceph.HealthDetailCalls;
+
+        var snapshot = integrity.GetLastIntegrity();
+
+        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(calls));
+        Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_OK"));
+        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("UNAVAILABLE"));
+    }
+
+    [Test]
+    public void ListOsdMembership_returns_ceph_map_rows()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.OsdMembership = new Dictionary<int, OsdMembershipDto>
+        {
+            [0] = new() { OsdId = 0, Up = true, In = true }
+        };
+
+        var membership = integrity.ListOsdMembership();
+
+        Assert.That(membership[0].Up, Is.True);
+    }
+
+    [Test]
+    public void ListOsdMembership_is_empty_when_ceph_throws()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.ThrowOnMembership = true;
+        ceph.OsdMembership = new Dictionary<int, OsdMembershipDto>
+        {
+            [0] = new() { OsdId = 0, Up = true, In = true }
+        };
+
+        Assert.That(integrity.ListOsdMembership(), Is.Empty);
+    }
+
     private static (IntegrityService Integrity, FakeCephQueryProvider Ceph, StoragePlaneService Plane) Create()
     {
         var clock = new FakeClock();

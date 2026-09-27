@@ -37,10 +37,23 @@ public sealed class StoragePlaneReconcilerTests
         harness.Ledger.BeginQueued();
         harness.Reconciler.ReconcileOnce();
         Assert.That(harness.Plane.GetLease()!.OperationId, Is.EqualTo(harness.Plane.GetState().ActiveOperationId));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
     }
 
     [Test]
-    public void Unexpected_integrity_faults_the_plane()
+    public void Reconcile_does_not_query_ceph()
+    {
+        var harness = Create();
+
+        harness.Reconciler.ReconcileOnce();
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(harness.Ceph.MembershipCalls, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Unexpected_integrity_does_not_fault_until_an_external_confirm()
     {
         var harness = Create();
         harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
@@ -55,7 +68,101 @@ public sealed class StoragePlaneReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
+        Assert.That(harness.Plane.GetState().State, Is.Not.EqualTo(StoragePlaneState.Faulted));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Unexpected_integrity_faults_after_an_external_confirm()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        harness.Ceph.Health = new()
+        {
+            Status = "HEALTH_ERR",
+            Summary = "unfound objects",
+            Checks = ["unfound objects"]
+        };
+        harness.Ceph.HasUnfound = true;
+        harness.Ceph.HealthChecks = ["unfound objects"];
+
+        _ = harness.Integrity.GetIntegrity();
+        var calls = harness.Ceph.HealthDetailCalls;
+        harness.Reconciler.ReconcileOnce();
+
         Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Faulted));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(calls));
+    }
+
+    [Test]
+    public void Waking_enters_ready_when_every_osd_process_is_running()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        harness.Osds.Seed(new OsdDto { OsdId = 0, HostId = "h1", DeviceId = "d0", Up = true, In = true, ProcessRunning = true });
+        var operationId = OperationIdRules.Create().Value;
+        harness.Plane.RequestWake(operationId, "operator");
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Ready));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Waking_stays_waking_when_an_osd_process_is_stopped()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        var operationId = OperationIdRules.Create().Value;
+        harness.Plane.RequestWake(operationId, "operator");
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Idle_sleep_uses_last_confirm_and_does_not_query_ceph()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        var operationId = OperationIdRules.Create().Value;
+        harness.Plane.RequestWake(operationId, "operator");
+        harness.Plane.EnterReady(operationId);
+        harness.Clock.UtcNow += TimeSpan.FromMinutes(16);
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Ready));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
+
+        _ = harness.Integrity.GetIntegrity();
+        var calls = harness.Ceph.HealthDetailCalls;
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Quiescing));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(calls));
+    }
+
+    [Test]
+    public void Idle_does_not_sleep_when_last_confirm_is_not_sleep_safe()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        var operationId = OperationIdRules.Create().Value;
+        harness.Plane.RequestWake(operationId, "operator");
+        harness.Plane.EnterReady(operationId);
+        harness.Ceph.PgsClean = false;
+        harness.Ceph.HasRecoveryOrBackfill = true;
+        _ = harness.Integrity.GetIntegrity();
+        harness.Clock.UtcNow += TimeSpan.FromMinutes(16);
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Ready));
+        Assert.That(harness.Plane.GetState().State, Is.Not.EqualTo(StoragePlaneState.Quiescing));
     }
 
     [Test]
@@ -66,6 +173,7 @@ public sealed class StoragePlaneReconcilerTests
 
         Assert.DoesNotThrow(() => harness.Reconciler.ReconcileOnce());
         Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Cold));
+        Assert.That(harness.Ceph.HealthDetailCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -114,14 +222,17 @@ public sealed class StoragePlaneReconcilerTests
             plane,
             new S3Controller(s3),
             integrityController,
-            new OsdsController(osds),
+            new OsdsController(osds, integrityController),
             new DevicesController(devices));
-        return new Harness(plane, reconciler, ledger, ceph);
+        return new Harness(plane, reconciler, ledger, ceph, integrityController, clock, osds);
     }
 
     private sealed record Harness(
         StoragePlaneService Plane,
         StoragePlaneReconciler Reconciler,
         MemoryRequestLedger Ledger,
-        FakeCephQueryProvider Ceph);
+        FakeCephQueryProvider Ceph,
+        IntegrityController Integrity,
+        FakeClock Clock,
+        OsdsService Osds);
 }

@@ -78,6 +78,32 @@ public sealed class CephCliQueryProvider : ICephQueryProvider
         return ParseChecks(document.RootElement);
     }
 
+    public IReadOnlyDictionary<int, OsdMembershipDto> ListOsdMembership()
+    {
+        var json = Run("osd", "dump");
+        if (string.IsNullOrWhiteSpace(json))
+            return new Dictionary<int, OsdMembershipDto>();
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("osds", out var osds) || osds.ValueKind != JsonValueKind.Array)
+            return new Dictionary<int, OsdMembershipDto>();
+
+        var membership = new Dictionary<int, OsdMembershipDto>();
+        foreach (var osd in osds.EnumerateArray())
+        {
+            if (!osd.TryGetProperty("osd", out var idNode) || !idNode.TryGetInt32(out var osdId))
+                continue;
+            var up = osd.TryGetProperty("up", out var upNode) && upNode.ValueKind == JsonValueKind.Number
+                ? upNode.GetInt32() != 0
+                : upNode.ValueKind == JsonValueKind.True;
+            var inn = osd.TryGetProperty("in", out var inNode) && inNode.ValueKind == JsonValueKind.Number
+                ? inNode.GetInt32() != 0
+                : inNode.ValueKind == JsonValueKind.True;
+            membership[osdId] = new OsdMembershipDto { OsdId = osdId, Up = up, In = inn };
+        }
+
+        return membership;
+    }
+
     private bool ContainsHealth(string token)
         => GetHealthChecks().Any(check => check.Contains(token, StringComparison.OrdinalIgnoreCase));
 

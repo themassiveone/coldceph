@@ -13,4 +13,8 @@ public sealed class HostsController
     }
 
     public NodeStatusDto GetStatus() => _service.GetStatus();
+
+    public bool IsControlEnrolled() => _service.IsControlEnrolled();
+
+    public void NoteJoinStatus(int statusCode) => _service.NoteJoinStatus(statusCode);
 }

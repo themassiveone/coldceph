@@ -17,6 +17,7 @@ public sealed class S3HttpTests
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         Assert.That(response.Headers.RetryAfter, Is.Not.Null);
+        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
     }
 
     [Test]

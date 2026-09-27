@@ -28,16 +28,23 @@ public sealed class IntegrityService
     private readonly object _snapshotGate = new();
     private IntegritySnapshot? _last;
 
-    public CephHealthRaw GetRawHealth()
+    public CephHealthRaw GetRawHealth() => GetLastIntegrity().Raw;
+
+    public IntegritySnapshot GetLastIntegrity()
     {
         lock (_snapshotGate)
+            return _last ?? Unavailable("Open Integrity to read Ceph health.");
+    }
+
+    public IReadOnlyDictionary<int, OsdMembershipDto> ListOsdMembership()
+    {
+        try
         {
-            return _last?.Raw ?? new CephHealthRaw
-            {
-                Status = "UNAVAILABLE",
-                Summary = "Open Integrity to read Ceph health.",
-                Checks = []
-            };
+            return _ceph.ListOsdMembership();
+        }
+        catch (Exception)
+        {
+            return new Dictionary<int, OsdMembershipDto>();
         }
     }
 

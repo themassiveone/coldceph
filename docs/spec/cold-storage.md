@@ -1376,7 +1376,8 @@ ceph pg stat --format json
 
 Fast readiness probe.
 
-Use for state-machine polling when full PG details are unnecessary.
+Fast readiness probe used when an operator page, `/v1` Integrity GET, or S3 admission confirms
+the cluster. Control does not run this on a timer.
 
 ---
 
@@ -1989,6 +1990,9 @@ POST /v1/devices/{id}/standby
 
 Operations must be idempotent.
 
+Control does not poll these Node GET lists for inventory. After Allow, the Node POSTs
+`/v1/osds/observed` and `/v1/devices/observed` on Control when local OSD/device state changes.
+
 For example:
 
 ```text
@@ -2031,6 +2035,9 @@ GET  /v1/osds/{id}
 
 GET  /v1/devices
 GET  /v1/devices/{id}
+
+POST /v1/osds/observed
+POST /v1/devices/observed
 
 POST /v1/devices/{id}/maintenance
 POST /v1/devices/{id}/replace
@@ -2497,32 +2504,28 @@ without rewriting the controller.
 
 ---
 
-# 46. Recommended Ceph Query Frequency
+# 46. When Control Talks to Ceph
 
-Not every command needs the same polling interval.
+Control never polls the monitor.
 
-Example while `READY`:
+Inventory (OSD processes, disk identity, power) is pushed by Nodes on enroll and when the
+local snapshot changes. Control stores that history and does not GET Node lists on a timer.
 
-```text
-ceph status          every 5–10 s
-pg stat              every 5–10 s
-health detail        on status change / 30–60 s
-osd tree             30–60 s
-pool configuration   minutes / topology change
-osd metadata         minutes / topology change
-device inventory     minutes
-full pg dump         only on transition/problem
-```
-
-While `COLD`:
+Ceph is queried only when an external request needs confirmation, and only once for that
+request:
 
 ```text
-Ceph status          slower
-MON quorum           periodic
-node heartbeat      periodic
-disk power status    conservative
-full PG inspection   unnecessary until wake
+operator Integrity page / `/v1` integrity   health detail, quorum, pg stat (one confirmation)
+operator Osds page / `/v1` osds             osd dump overlay of up/in
+S3 admission after StoragePlane is READY    one confirmation, then forward or 503
+Wake/Sleep `noout` mutations                set-group / unset-group when the plane transitions
 ```
+
+StoragePlane, Osds, and Devices reconcilers must not invoke the Ceph CLI. They read
+Node-pushed process/device state and the last Integrity snapshot left by a confirmation.
+
+While `COLD`, do not query PGs or OSD data devices. A cold Integrity page may still confirm
+monitor health once.
 
 Avoid queries that themselves require sleeping data devices.
 

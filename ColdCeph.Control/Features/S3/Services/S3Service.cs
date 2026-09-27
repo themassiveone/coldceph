@@ -2,6 +2,7 @@ using ColdCeph.Control.Composition;
 using ColdCeph.Control.Features.Integrity.Controllers;
 using ColdCeph.Control.Features.S3.Interfaces;
 using ColdCeph.Control.Features.StoragePlane.Controllers;
+using ColdCeph.Core.Features.Integrity.DTOs;
 using ColdCeph.Core.Features.S3.DTOs;
 using ColdCeph.Core.Features.StoragePlane.DTOs;
 
@@ -54,30 +55,47 @@ public sealed class S3Service
     {
         while (!context.RequestAborted.IsCancellationRequested)
         {
-            if (IsAdmitted(context.Request.Method, out var retry))
-                return true;
-
-            if (_config.S3Mode == S3AdmissionMode.Retry || retry)
+            if (_plane.GetState().State != StoragePlaneState.Ready)
             {
-                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                context.Response.Headers.RetryAfter = _config.RetryAfterSeconds.ToString();
-                return false;
+                if (_config.S3Mode == S3AdmissionMode.Retry)
+                {
+                    WriteRetryAfter(context);
+                    return false;
+                }
+
+                try
+                {
+                    await Task.Delay(200, context.RequestAborted);
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+
+                continue;
             }
 
-            await Task.Delay(200, context.RequestAborted);
+            var predicates = _integrity.GetIntegrity().Predicates;
+            if (IsAdmitted(context.Request.Method, predicates))
+                return true;
+
+            WriteRetryAfter(context);
+            return false;
         }
 
         return false;
     }
 
-    private bool IsAdmitted(string method, out bool failClosedWrite)
+    private void WriteRetryAfter(HttpContext context)
     {
-        var predicates = _integrity.GetPredicates();
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers.RetryAfter = _config.RetryAfterSeconds.ToString();
+    }
+
+    private bool IsAdmitted(string method, ReadinessPredicates predicates)
+    {
         var readiness = _plane.GetReadiness(predicates.ReadReady, predicates.WriteReady);
         var write = method is "PUT" or "POST" or "DELETE" or "PATCH";
-        failClosedWrite = write && !readiness.ForwardWrites;
-        if (write)
-            return readiness.ForwardWrites;
-        return readiness.ForwardReads;
+        return write ? readiness.ForwardWrites : readiness.ForwardReads;
     }
 }

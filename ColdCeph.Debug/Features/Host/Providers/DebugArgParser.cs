@@ -21,20 +21,11 @@ public sealed class DebugArgParser : IDebugArgParser
             return new DebugCommandDto(verb, null);
         }
 
-        if (verb is "down" or "status")
+        if (verb is "up" or "down" or "status")
         {
             if (args.Length != 1)
                 throw new ArgumentException($"{verb} takes no arguments.");
             return new DebugCommandDto(verb, null);
-        }
-
-        if (verb == "up")
-        {
-            if (args.Length == 1)
-                return new DebugCommandDto(verb, null);
-            if (args.Length == 2 && args[1] == "--build")
-                return new DebugCommandDto(verb, null, RebuildImages: true);
-            throw new ArgumentException("up takes no arguments except --build.");
         }
 
         if (verb == "allow")

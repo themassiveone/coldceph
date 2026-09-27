@@ -16,6 +16,8 @@ public sealed class OsdsController
 
     public OsdDto? GetOsd(int osdId) => _service.GetOsd(osdId);
 
+    public string? GetLastDiscoveryError() => _service.GetLastDiscoveryError();
+
     public OsdMutationResult Start(OsdMutationRequest request) => _service.Start(request);
 
     public OsdMutationResult Stop(OsdMutationRequest request) => _service.Stop(request);

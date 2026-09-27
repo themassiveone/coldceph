@@ -4,5 +4,5 @@ namespace ColdCeph.Node.Features.Hosts.Interfaces;
 
 public interface IControlHeartbeatClient
 {
-    void Send(NodeStatusDto status, Uri advertiseEndpoint);
+    int Send(NodeStatusDto status, Uri advertiseEndpoint);
 }

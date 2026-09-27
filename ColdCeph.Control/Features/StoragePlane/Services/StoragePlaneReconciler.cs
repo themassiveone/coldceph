@@ -49,14 +49,14 @@ public sealed class StoragePlaneReconciler : BackgroundService
         }
         catch (Exception)
         {
-            // A failed Ceph CLI or illegal transition must not stop the hosted loop.
+            // A failed node query or illegal transition must not stop the hosted loop.
         }
     }
 
     private void ReconcileBody()
     {
         var snapshot = _plane.GetState();
-        var integrity = _integrity.GetIntegrity();
+        var integrity = _integrity.GetLastIntegrity();
         var pending = _s3.GetPendingWork();
         var operationId = snapshot.ActiveOperationId ?? OperationIdRules.Create().Value;
 
@@ -68,16 +68,14 @@ public sealed class StoragePlaneReconciler : BackgroundService
 
         if (!snapshot.Trusted)
         {
-            _plane.MarkObserved(InferReality(integrity), "startup-reconcile");
+            _plane.MarkObserved(InferReality(), "startup-reconcile");
             snapshot = _plane.GetState();
         }
 
         if (pending.HasPendingWork && snapshot.State == StoragePlaneState.Cold)
             _plane.RequestWake(operationId, "s3-pending");
 
-        if (snapshot.State == StoragePlaneState.Waking
-            && _osds.IsEveryProcessRunning()
-            && integrity.Predicates.ReadReady)
+        if (snapshot.State == StoragePlaneState.Waking && _osds.IsEveryProcessRunning())
             _plane.EnterReady(operationId);
 
         if (snapshot.State == StoragePlaneState.Ready
@@ -99,11 +97,11 @@ public sealed class StoragePlaneReconciler : BackgroundService
     private static bool HasUnexpectedIntegrity(IntegritySnapshot integrity)
         => integrity.Checks.Any(check => check.Classification == HealthClassification.Unexpected);
 
-    private StoragePlaneState InferReality(IntegritySnapshot integrity)
+    private StoragePlaneState InferReality()
     {
-        if (_osds.IsEveryProcessRunning() && integrity.Predicates.ReadReady)
+        if (_osds.IsEveryProcessRunning())
             return StoragePlaneState.Ready;
-        if (_osds.IsEveryProcessRunning() || !_devices.IsEveryDeviceStandby())
+        if (!_osds.IsEveryProcessStopped() || !_devices.IsEveryDeviceStandby())
             return StoragePlaneState.Waking;
         return StoragePlaneState.Cold;
     }

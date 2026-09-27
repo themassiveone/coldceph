@@ -56,7 +56,6 @@ public sealed class DevicesReconciler : BackgroundService
         {
             try
             {
-                _devices.RefreshFromNode(host.HostId, host.Endpoint);
                 if (state == StoragePlaneState.Waking)
                     _devices.WakeAll(host.HostId, host.Endpoint, operationId);
                 if (state == StoragePlaneState.Sleeping && _osds.IsEveryProcessStopped())

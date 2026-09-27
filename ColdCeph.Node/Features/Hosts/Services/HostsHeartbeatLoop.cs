@@ -23,7 +23,8 @@ public sealed class HostsHeartbeatLoop : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             BeatOnce();
-            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+            var delay = _hosts.IsControlEnrolled() ? TimeSpan.FromSeconds(10) : TimeSpan.FromSeconds(1);
+            await Task.Delay(delay, stoppingToken);
         }
     }
 
@@ -34,7 +35,7 @@ public sealed class HostsHeartbeatLoop : BackgroundService
 
         try
         {
-            _client.Send(_hosts.GetStatus(), _config.AdvertiseEndpoint);
+            _hosts.NoteJoinStatus(_client.Send(_hosts.GetStatus(), _config.AdvertiseEndpoint));
         }
         catch (Exception)
         {

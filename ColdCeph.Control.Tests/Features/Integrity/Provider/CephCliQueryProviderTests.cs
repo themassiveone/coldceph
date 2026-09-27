@@ -128,6 +128,32 @@ public sealed class CephCliQueryProviderTests
         Assert.That(HealthDetailCount(runner), Is.EqualTo(1));
     }
 
+    [Test]
+    public void Osd_dump_parses_numeric_up_and_in()
+    {
+        var runner = new RecordingProcessRunner
+        {
+            Output = """{"osds":[{"osd":0,"up":1,"in":1},{"osd":1,"up":0,"in":1}]}"""
+        };
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
+
+        var membership = provider.ListOsdMembership();
+
+        Assert.That(runner.Commands.Single(), Does.Contain("osd dump"));
+        Assert.That(membership[0].Up, Is.True);
+        Assert.That(membership[0].In, Is.True);
+        Assert.That(membership[1].Up, Is.False);
+    }
+
+    [Test]
+    public void Osd_dump_without_osds_is_empty()
+    {
+        var runner = new RecordingProcessRunner { Output = """{"fsid":"abc"}""" };
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
+
+        Assert.That(provider.ListOsdMembership(), Is.Empty);
+    }
+
     private static (CephCliQueryProvider Provider, RecordingProcessRunner Runner, FakeClock Clock) Create(TimeSpan? ttl = null)
     {
         var runner = new RecordingProcessRunner { Output = """{"status":"HEALTH_OK","checks":{}}""" };

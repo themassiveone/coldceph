@@ -64,7 +64,9 @@ public sealed class SharedEnvironment
             Port = NodePort,
             NodeToken = NodeToken,
             HostId = HostId,
-            Hostname = HostId
+            Hostname = HostId,
+            ControlEndpoint = ControlAddress,
+            AdvertiseEndpoint = NodeAddress
         };
         NodeAppComposition.Configure(builder, config);
         builder.Services.RemoveAll<IOsdRuntime>();
@@ -74,7 +76,8 @@ public sealed class SharedEnvironment
         builder.WebHost.UseKestrel().UseUrls($"http://127.0.0.1:{NodePort}");
         var app = builder.Build();
         await NodeAppComposition.Initialize(app);
-        app.Services.GetRequiredService<OsdsService>().Seed(new OsdDto
+        var osds = app.Services.GetRequiredService<OsdsService>();
+        osds.Seed(new OsdDto
         {
             OsdId = 0,
             HostId = HostId,
@@ -83,6 +86,8 @@ public sealed class SharedEnvironment
             In = true,
             ProcessRunning = false
         });
+        if (app.Services.GetRequiredService<IOsdRuntime>() is InMemoryOsdRuntime runtime)
+            runtime.Know(0);
         app.Services.GetRequiredService<DevicesService>().Seed(new DeviceDto
         {
             DeviceId = "d0",

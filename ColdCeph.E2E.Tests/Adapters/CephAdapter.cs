@@ -37,6 +37,12 @@ public sealed class CephAdapter : XceptoAdapter
         }));
     }
 
+    public void SeeOsdMembership()
+    {
+        AddStep(new ExpectationStepState("Control ceph osd dump lists OSDs", () =>
+            Task.FromResult(_query.ListOsdMembership().Count > 0)));
+    }
+
     public void SeePgStat()
     {
         AddStep(new ExpectationStepState("Control ceph pg stat succeeds", () =>

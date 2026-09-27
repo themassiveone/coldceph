@@ -16,16 +16,16 @@ public sealed class HttpControlHeartbeatClient : IControlHeartbeatClient
         _config = config;
     }
 
-    public void Send(NodeStatusDto status, Uri advertiseEndpoint)
+    public int Send(NodeStatusDto status, Uri advertiseEndpoint)
     {
         if (_config.ControlEndpoint is null)
-            return;
+            return 0;
 
         var client = _factory.CreateClient("control");
         client.BaseAddress = _config.ControlEndpoint;
         client.DefaultRequestHeaders.Remove("X-ColdCeph-Node-Endpoint");
         client.DefaultRequestHeaders.Add("X-ColdCeph-Node-Endpoint", advertiseEndpoint.ToString());
         var response = client.PostAsJsonAsync("/v1/hosts/join", status).GetAwaiter().GetResult();
-        response.EnsureSuccessStatusCode();
+        return (int)response.StatusCode;
     }
 }

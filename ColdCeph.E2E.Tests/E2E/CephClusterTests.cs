@@ -21,6 +21,7 @@ public sealed class CephClusterTests
             ceph.SeeQuorum();
             ceph.SeeHealthNotSilent();
             ceph.SeePgStat();
+            ceph.SeeOsdMembership();
             ceph.SeeScopedNooutRoundTrip();
         });
     }

@@ -16,5 +16,9 @@ public sealed class DevicesController
 
     public DeviceDto? GetDevice(string deviceId) => _service.GetDevice(deviceId);
 
+    public IReadOnlyList<string> ListObservationErrors() => _service.ListObservationErrors();
+
     public bool IsEveryDeviceStandby() => _service.IsEveryDeviceStandby();
+
+    public void ApplyObserved(HostDevicesObservationDto observation) => _service.ApplyObserved(observation);
 }

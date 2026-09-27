@@ -16,24 +16,17 @@ public sealed class DockerExecOsdRuntime : IOsdRuntime
 
     public IReadOnlyList<int> ListIds()
     {
-        try
-        {
-            var output = _runner.Run("docker", [
-                "exec", _container, "bash", "-c",
-                "cat /var/lib/ceph/osd/*/whoami 2>/dev/null || true"
-            ]);
-            return output
-                .Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)
-                .Select(part => int.TryParse(part, out var id) ? id : (int?)null)
-                .Where(id => id.HasValue)
-                .Select(id => id!.Value)
-                .Distinct()
-                .ToArray();
-        }
-        catch (InvalidOperationException)
-        {
-            return [];
-        }
+        var output = _runner.Run("docker", [
+            "exec", _container, "bash", "-c",
+            "cat /var/lib/ceph/osd/*/whoami 2>/dev/null || true"
+        ]);
+        return output
+            .Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => int.TryParse(part, out var id) ? id : (int?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToArray();
     }
 
     public bool IsRunning(int osdId)

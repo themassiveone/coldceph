@@ -12,7 +12,6 @@ public sealed class DebugArgParserTests
 
         Assert.That(command.Verb, Is.EqualTo("screenshot"));
         Assert.That(command.PagePath, Is.EqualTo("/hosts"));
-        Assert.That(command.RebuildImages, Is.False);
     }
 
     [Test]
@@ -25,22 +24,12 @@ public sealed class DebugArgParserTests
     }
 
     [Test]
-    public void Parses_compose_up_without_rebuilding_images()
+    public void Parses_compose_up()
     {
         var command = new DebugArgParser().Parse(["up"]);
 
         Assert.That(command.Verb, Is.EqualTo("up"));
         Assert.That(command.PagePath, Is.Null);
-        Assert.That(command.RebuildImages, Is.False);
-    }
-
-    [Test]
-    public void Parses_compose_up_with_rebuild()
-    {
-        var command = new DebugArgParser().Parse(["up", "--build"]);
-
-        Assert.That(command.Verb, Is.EqualTo("up"));
-        Assert.That(command.RebuildImages, Is.True);
     }
 
     [Test]
@@ -71,14 +60,15 @@ public sealed class DebugArgParserTests
     public void Rejects_unknown_verbs()
     {
         Assert.That(() => new DebugArgParser().Parse(["launch"]), Throws.ArgumentException);
+        Assert.That(() => new DebugArgParser().Parse(["nodes"]), Throws.ArgumentException);
         Assert.That(() => new DebugArgParser().Parse(["screenshot", "/hosts", "/osds"]), Throws.ArgumentException);
     }
 
     [Test]
-    public void Rejects_up_arguments_other_than_build()
+    public void Rejects_up_arguments()
     {
+        Assert.That(() => new DebugArgParser().Parse(["up", "--build"]), Throws.ArgumentException);
         Assert.That(() => new DebugArgParser().Parse(["up", "--no-deps"]), Throws.ArgumentException);
-        Assert.That(() => new DebugArgParser().Parse(["up", "cc-a"]), Throws.ArgumentException);
         Assert.That(() => new DebugArgParser().Parse(["down", "--build"]), Throws.ArgumentException);
     }
 }

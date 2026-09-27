@@ -11,10 +11,10 @@ public sealed class ComposeController
         _stack = stack;
     }
 
-    public int Up(bool rebuildImages)
+    public int Up()
     {
-        _stack.Up(rebuildImages);
-        Console.WriteLine(rebuildImages ? "compose: up --build" : "compose: up");
+        _stack.Up();
+        Console.WriteLine("compose: up");
         return 0;
     }
 

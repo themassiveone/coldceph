@@ -17,7 +17,7 @@ namespace ColdCeph.Control.Tests.Features.Osds.Unit;
 public sealed class OsdsReconcilerTests
 {
     [Test]
-    public void Waking_starts_osds_discovered_from_the_node()
+    public void Waking_starts_osds_already_reported_by_the_node()
     {
         var harness = Create(withHost: true);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
@@ -43,11 +43,9 @@ public sealed class OsdsReconcilerTests
     }
 
     [Test]
-    public void Refresh_from_one_host_does_not_drop_the_other_host_osds()
+    public void Observed_osds_from_one_host_do_not_drop_the_other_host()
     {
         var harness = CreateTwoHosts();
-
-        harness.Reconciler.ReconcileOnce();
 
         Assert.That(harness.Osds.GetOsd(0)?.HostId, Is.EqualTo("node-a"));
         Assert.That(harness.Osds.GetOsd(1)?.HostId, Is.EqualTo("node-b"));
@@ -58,7 +56,7 @@ public sealed class OsdsReconcilerTests
     {
         var harness = CreateTwoHosts();
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Node.ThrowOnListFor.Add(new Uri("http://127.0.0.1:7081"));
+        harness.Node.ThrowOnStartFor.Add(new Uri("http://127.0.0.1:7081"));
 
         harness.Reconciler.ReconcileOnce();
 
@@ -83,7 +81,7 @@ public sealed class OsdsReconcilerTests
     {
         var harness = Create(withHost: true);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Node.ThrowOnList = true;
+        harness.Node.ThrowOnStart = true;
 
         Assert.DoesNotThrow(() => harness.Reconciler.ReconcileOnce());
         Assert.That(harness.Node.Commands, Is.Empty);
@@ -94,9 +92,9 @@ public sealed class OsdsReconcilerTests
     {
         var harness = Create(withHost: true);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Node.ThrowOnList = true;
+        harness.Node.ThrowOnStart = true;
         harness.Reconciler.ReconcileOnce();
-        harness.Node.ThrowOnList = false;
+        harness.Node.ThrowOnStart = false;
 
         harness.Reconciler.ReconcileOnce();
 
@@ -108,14 +106,20 @@ public sealed class OsdsReconcilerTests
         var clock = new FakeClock();
         var config = new ControlConfig();
         var plane = new StoragePlaneService(new MemoryStoragePlaneRepository(), new RecordingNooutProvider(), clock, config);
-        var node = new FakeNodeOsdsClient
-        {
-            Inventory =
-            [
-                new OsdDto { OsdId = 0, HostId = "h1", DeviceId = "d0", Up = false, In = true, ProcessRunning = false }
-            ]
-        };
+        var node = new FakeNodeOsdsClient();
         var osds = new OsdsService(node, config);
+        if (withHost)
+        {
+            osds.ApplyObserved(new HostOsdsObservationDto
+            {
+                HostId = "h1",
+                Osds =
+                [
+                    new OsdDto { OsdId = 0, HostId = "h1", DeviceId = "d0", Up = false, In = true, ProcessRunning = false }
+                ]
+            });
+        }
+
         var hosts = new HostsService(config, clock);
         if (withHost)
             hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
@@ -131,15 +135,17 @@ public sealed class OsdsReconcilerTests
         var hostA = new Uri("http://127.0.0.1:7081");
         var hostB = new Uri("http://127.0.0.1:7082");
         var node = new FakeNodeOsdsClient();
-        node.InventoryByEndpoint[hostA] =
-        [
-            new OsdDto { OsdId = 0, HostId = "node-a", DeviceId = "d0", Up = false, In = true, ProcessRunning = false }
-        ];
-        node.InventoryByEndpoint[hostB] =
-        [
-            new OsdDto { OsdId = 1, HostId = "node-b", DeviceId = "d1", Up = false, In = true, ProcessRunning = false }
-        ];
         var osds = new OsdsService(node, config);
+        osds.ApplyObserved(new HostOsdsObservationDto
+        {
+            HostId = "node-a",
+            Osds = [new OsdDto { OsdId = 0, HostId = "node-a", DeviceId = "d0", Up = false, In = true, ProcessRunning = false }]
+        });
+        osds.ApplyObserved(new HostOsdsObservationDto
+        {
+            HostId = "node-b",
+            Osds = [new OsdDto { OsdId = 1, HostId = "node-b", DeviceId = "d1", Up = false, In = true, ProcessRunning = false }]
+        });
         var hosts = new HostsService(config, clock);
         hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-a", Hostname = "node-a", ObservedAt = clock.UtcNow }, hostA);
         hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-b", Hostname = "node-b", ObservedAt = clock.UtcNow }, hostB);

@@ -63,4 +63,45 @@ public sealed class HostsPagesHttpTests
         Assert.That(html, Does.Contain("action=\"/hosts/h1/deny\""));
         Assert.That(html, Does.Not.Contain("No join requests"));
     }
+
+    [Test]
+    public async Task Enrolled_hosts_page_lists_every_allowed_machine()
+    {
+        using var factory = new Support.ControlAppFactory();
+        var hosts = factory.Services.GetRequiredService<HostsController>();
+        Enroll(hosts, "node-a", "http://127.0.0.1:7081");
+        Enroll(hosts, "node-b", "http://127.0.0.1:7082");
+        Enroll(hosts, "node-c", "http://127.0.0.1:7083");
+        using var client = await Support.OperatorClient.SignedIn(factory);
+
+        var html = await client.GetStringAsync("/hosts");
+
+        Assert.That(html, Does.Contain("node-a"));
+        Assert.That(html, Does.Contain("node-b"));
+        Assert.That(html, Does.Contain("node-c"));
+        Assert.That(html, Does.Not.Contain("No machines enrolled"));
+    }
+
+    [Test]
+    public async Task Enrolled_hosts_page_does_not_list_a_host_that_was_not_allowed()
+    {
+        using var factory = new Support.ControlAppFactory();
+        var hosts = factory.Services.GetRequiredService<HostsController>();
+        Enroll(hosts, "node-a", "http://127.0.0.1:7081");
+        using var client = await Support.OperatorClient.SignedIn(factory);
+
+        var html = await client.GetStringAsync("/hosts");
+
+        Assert.That(html, Does.Contain("node-a"));
+        Assert.That(html, Does.Not.Contain("node-b"));
+        Assert.That(html, Does.Not.Contain("node-c"));
+    }
+
+    private static void Enroll(HostsController hosts, string hostId, string endpoint)
+    {
+        hosts.RequestJoin(
+            new NodeStatusDto { HostId = hostId, Hostname = hostId, ObservedAt = DateTimeOffset.UtcNow },
+            endpoint);
+        hosts.Approve(hostId);
+    }
 }

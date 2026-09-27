@@ -1,3 +1,7 @@
+using ColdCeph.Control.Composition;
+using ColdCeph.Control.Features.Hosts.Controllers;
+using ColdCeph.Control.Shared;
+using ColdCeph.Core.Features.Osds.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,10 +12,14 @@ namespace ColdCeph.Control.Features.Osds.Controllers;
 public sealed class OsdsApiController : ControllerBase
 {
     private readonly OsdsController _osds;
+    private readonly HostsController _hosts;
+    private readonly ControlConfig _config;
 
-    public OsdsApiController(OsdsController osds)
+    public OsdsApiController(OsdsController osds, HostsController hosts, ControlConfig config)
     {
         _osds = osds;
+        _hosts = hosts;
+        _config = config;
     }
 
     [HttpGet]
@@ -22,5 +30,16 @@ public sealed class OsdsApiController : ControllerBase
     {
         var osd = _osds.GetOsd(id);
         return osd is null ? NotFound() : Ok(osd);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("observed")]
+    public IActionResult Observed([FromBody] HostOsdsObservationDto observation)
+    {
+        var rejected = NodeObservationGate.Reject(Request, _config.NodeToken, _hosts, observation.HostId);
+        if (rejected is not null)
+            return rejected;
+        _osds.ApplyObserved(observation);
+        return Ok();
     }
 }

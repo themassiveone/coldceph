@@ -41,5 +41,20 @@ public sealed class FakeCephQueryProvider : ICephQueryProvider
     public bool GetHasRecoveryOrBackfill() => HasRecoveryOrBackfill;
     public bool GetHasStaleOrIncomplete() => HasStaleOrIncomplete;
     public bool GetHasFullOsds() => HasFullOsds;
+    public IReadOnlyDictionary<int, OsdMembershipDto> OsdMembership { get; set; } =
+        new Dictionary<int, OsdMembershipDto>();
+
     public IReadOnlyList<string> GetHealthChecks() => HealthChecks.Count > 0 ? HealthChecks : Health.Checks;
+
+    public bool ThrowOnMembership { get; set; }
+
+    public int MembershipCalls { get; set; }
+
+    public IReadOnlyDictionary<int, OsdMembershipDto> ListOsdMembership()
+    {
+        if (ThrowOnMembership)
+            throw new InvalidOperationException("ceph unavailable");
+        MembershipCalls++;
+        return OsdMembership;
+    }
 }

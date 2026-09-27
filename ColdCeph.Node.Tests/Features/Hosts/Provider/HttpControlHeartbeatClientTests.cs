@@ -20,10 +20,11 @@ public sealed class HttpControlHeartbeatClientTests
                 NodeToken = "should-not-be-sent"
             });
 
-        client.Send(
+        var status = client.Send(
             new NodeStatusDto { HostId = "dev", Hostname = "dev", ObservedAt = DateTimeOffset.UtcNow },
             new Uri("http://127.0.0.1:7080"));
 
+        Assert.That(status, Is.EqualTo(202));
         Assert.That(handler.Last!.RequestUri!.AbsolutePath, Is.EqualTo("/v1/hosts/join"));
         Assert.That(handler.Last.Headers.Contains("X-ColdCeph-Token"), Is.False);
         Assert.That(string.Join(',', handler.Last.Headers.GetValues("X-ColdCeph-Node-Endpoint")), Does.Contain("127.0.0.1:7080"));
@@ -37,11 +38,12 @@ public sealed class HttpControlHeartbeatClientTests
             new FixedFactory(new HttpClient(handler)),
             new NodeConfig { NodeToken = "secret" });
 
-        client.Send(
+        var status = client.Send(
             new NodeStatusDto { HostId = "dev", Hostname = "dev", ObservedAt = DateTimeOffset.UtcNow },
             new Uri("http://127.0.0.1:7080"));
 
         Assert.That(handler.Last, Is.Null);
+        Assert.That(status, Is.EqualTo(0));
     }
 
     private sealed class RecordingHandler : HttpMessageHandler

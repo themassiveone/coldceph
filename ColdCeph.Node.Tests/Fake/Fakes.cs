@@ -14,8 +14,14 @@ public sealed class FakeOsdRuntime : IOsdRuntime
     public HashSet<int> Running { get; } = [];
     public HashSet<int> Listed { get; } = [];
     public List<string> Commands { get; } = [];
+    public bool ThrowOnList { get; set; }
 
-    public IReadOnlyList<int> ListIds() => Listed.ToArray();
+    public IReadOnlyList<int> ListIds()
+    {
+        if (ThrowOnList)
+            throw new InvalidOperationException("docker exec failed");
+        return Listed.ToArray();
+    }
 
     public bool IsRunning(int osdId) => Running.Contains(osdId);
 

@@ -65,10 +65,25 @@ public sealed class DevicesServiceTests
         Assert.That(devices.ListDevices(), Is.Empty);
     }
 
+    [Test]
+    public void ListDevices_does_not_throw_when_called_from_many_threads()
+    {
+        var runtime = new FakeOsdRuntime();
+        runtime.Listed.Add(2);
+        var config = new NodeConfig { HostId = "node-b", OsdContainer = "coldceph-node-b" };
+        var osds = new OsdsService(runtime, config);
+        var devices = new DevicesService(new FakeDiskPower(), new OsdsController(osds), config);
+
+        Parallel.For(0, 64, _ => devices.ListDevices());
+
+        Assert.That(devices.ListDevices().Select(device => device.MappedOsdId), Does.Contain(2));
+    }
+
     private static (DevicesService Devices, OsdsService Osds, FakeDiskPower Power, FakeOsdRuntime Runtime) Create()
     {
         var config = new NodeConfig { HostId = "h1", Hostname = "h1" };
         var runtime = new FakeOsdRuntime();
+        runtime.Listed.Add(1);
         var osds = new OsdsService(runtime, config);
         var power = new FakeDiskPower();
         var devices = new DevicesService(power, new OsdsController(osds), config);

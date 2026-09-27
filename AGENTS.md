@@ -75,8 +75,8 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 | **S3** | Can clients GET/PUT objects through the cold endpoint? | In-flight/queued requests, proxy sessions, wait vs 503 | Pending work, active count, last activity |
 | **StoragePlane** | Is the data plane COLD, WAKING, READY, …? Should it sleep? | Operational state, transition lease, idle policy, controller-owned `noout` records | State, readiness, lease holder |
 | **Integrity** | Is my data known safe? What does Ceph say vs expected-cold? | Last verified-clean snapshot, classified health checks, PG/pool durability view | Integrity DTO, raw Ceph health fields |
-| **Osds** | Which OSDs exist, up/in, started/stopped? | Desired/observed OSD process commands to nodes | OSD inventory DTOs |
-| **Devices** | Which HDDs, identity, power state? | Wake/standby commands to nodes | Device inventory DTOs |
+| **Osds** | Which OSDs exist, up/in, started/stopped? | Observed inventory from Nodes, start/stop commands to nodes | OSD inventory DTOs |
+| **Devices** | Which HDDs, identity, power state? | Observed inventory from Nodes, wake/standby commands to nodes | Device inventory DTOs |
 | **Hosts** | Which machines, node liveness? | Join requests, operator allow/deny, enrolled host liveness | Host DTOs, pending/blocked joins, node endpoints |
 | **Operations** | What ran, who initiated, what flags changed? | Audit/operation records | Operation/event lists |
 | **Auth** | Who may operate this appliance? | Operator sessions/credentials | Current principal (queries only) |
@@ -85,9 +85,9 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 
 | Slice | User/maintainer meaning | Owns writes |
 |-------|-------------------------|-------------|
-| **Osds** | Local OSD processes | start/stop/isRunning (systemd provider first) |
-| **Devices** | Local physical drives | identity, wake/standby; refuse standby while the mapped OSD still runs |
-| **Hosts** | This node’s identity and liveness | `/v1/status`; join request to Control when `COLDCEPH_CONTROL_ENDPOINT` is set |
+| **Osds** | Local OSD processes | start/stop/isRunning; push observations to Control after enroll and when the local snapshot changes |
+| **Devices** | Local physical drives | identity, wake/standby; refuse standby while the mapped OSD still runs; push observations with Osds |
+| **Hosts** | This node’s identity and liveness | `/v1/status`; join request to Control when `COLDCEPH_CONTROL_ENDPOINT` is set; 200 means enrolled for inventory push |
 
 ## Core (`ColdCeph.Core`)
 
@@ -96,8 +96,9 @@ Same slice names, **DTOs and IDs only**. No services that mutate. StoragePlane s
 
 # MVP State Machine and Safety
 
-States: `COLD → WAKING → READY → QUIESCING → SLEEPING → COLD`, plus `FAULTED`. Peering wait stays
-inside `WAKING`; unexpected integrity → `FAULTED`. `PEERING`, `MAINTENANCE`, and `DEGRADED` are
+States: `COLD → WAKING → READY → QUIESCING → SLEEPING → COLD`, plus `FAULTED`. `WAKING` ends
+when Nodes report every OSD process running. Unexpected integrity → `FAULTED` after an
+operator/`/v1`/S3 confirmation, not a timer. `PEERING`, `MAINTENANCE`, and `DEGRADED` are
 later-release states.
 
 Invariants:
@@ -106,7 +107,9 @@ Invariants:
 - Sleep uses scoped `noout` owned by StoragePlane; never `out` / `safe-to-destroy` / destroy/purge/rm.
 - `ok-to-stop` is not the all-OSD sleep predicate.
 - Clear only flags StoragePlane recorded as controller-owned.
-- Startup: each slice reconciles from Ceph/nodes/disks; persisted `COLD` is not trusted.
+- Startup: Nodes push OSD/device snapshots after Allow; Control overlays Ceph `osd dump` up/in
+  at Osds list time (once per operator/`/v1` GET). Persisted `COLD` is not trusted. Control
+  reconcilers do not GET Node inventory and do not invoke the Ceph CLI.
 - One StoragePlane transition lease; many S3 requests create one pending-work signal, one wake.
 - Writes fail closed unless Integrity reports `write_ready`; cold `HEALTH_ERR` is classified
 expected, not hidden. Controller-owned scoped `noout` (OSDMAP_FLAGS) is expected, not a
@@ -118,7 +121,8 @@ sleeping HDDs.
 S3-triggered wake: S3 **does not** call `StoragePlane.Wake()`. S3 records pending work. StoragePlane’s
 reconciler **reads** `S3.HasPendingWork` and **owns** the transition to `WAKING`.
 
-Sleep: StoragePlane moves to `QUIESCING`/`SLEEPING` after reading S3 idle + Integrity sleep-safe.
+Sleep: StoragePlane moves to `QUIESCING`/`SLEEPING` after reading S3 idle plus the last Integrity
+sleep-safe snapshot from an operator/`/v1`/S3 confirmation. It does not fetch Ceph on a timer.
 Osds/Devices reconcilers **read** that state and stop/standby themselves. StoragePlane must not
 standby disks.
 
@@ -145,7 +149,9 @@ Second Kestrel URL (do not mix S3 and HTML): operator `:8080` (or `WEB_PORT` und
 `:7480`. Both bind `http://*:port` so `localhost` (IPv6) and `127.0.0.1` reach the operator UI.
 HttpClient access-log lines for the node/RGW clients stay at Warning so reconciler polls do not
 drown `Now listening on`. Transparent proxy to RGW. Preserve signed method/path/query/`Host`/`x-amz-*`. Wait-mode
-holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local buffering.
+holds the connection until StoragePlane is `READY` (Node-pushed processes), then confirms Ceph
+**once** and forwards or returns 503; retry-mode returns 503 + `Retry-After` without a Ceph
+call while not `READY`. No unlimited local buffering.
 `Expect: 100-continue` where possible.
 
 # Testing
@@ -164,12 +170,23 @@ holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local
 - Layout chrome queries StoragePlane + Integrity **only after authentication**. Login and
   anonymous 401 pages must not invoke the Ceph CLI. Authenticated chrome reads Integrity’s
   last raw-health snapshot so HTML does not wait on the Ceph CLI. The Integrity page still
-  loads the full classified snapshot.
-- Ceph CLI is **single-flight and TTL-cached** (default 2s) inside Integrity’s query provider.
-  `ContainsHealth` reuses the cached `health detail` JSON; it must not spawn another process.
+  loads the full classified snapshot **once** per reload.
+- Control **never polls** Ceph. The monitor is queried only when an external request needs
+  confirmation, and only once per request: Integrity HTML/`/v1`, S3 admission after `READY`,
+  and Osds `osd dump` overlay on Osds list GET. Historical OSD/device inventory comes from
+  Node push on enroll and local change. Reconcilers read Node-pushed state and the last
+  Integrity snapshot; they do not invoke the Ceph CLI.
+- Ceph CLI is **single-flight** inside Integrity’s query provider so one confirmation’s
+  `health detail` / quorum / `pg stat` commands do not stack duplicate `health detail`
+  processes. `ContainsHealth` reuses that JSON; it must not spawn another process.
   Control’s process runner admits **one child process at a time**.
 - StoragePlane, Osds, and Devices reconcilers catch provider exceptions per tick so a
-  failed `ceph` or node call cannot stop the loop. The next tick retries.
+  failed node call cannot stop the loop. The next tick retries.
+- Nodes push `POST /v1/osds/observed` and `POST /v1/devices/observed` (node token, enrolled
+  host only) on enroll and when the local snapshot changes. Node OSD/device snapshots are
+  mutated under a lock so report loops and node HTTP cannot tear the dictionary. Integrity overlays Ceph `osd dump`
+  up/in once per Osds list GET. Osds/Devices reconcilers issue WAKING start/wake and SLEEPING
+  stop/standby only.
 - `ColdCeph.E2E.Tests`: thin Xcepto only. A project `[SetUpFixture]` starts an assembly-wide
   Testcontainers Ceph demo (`CephCluster`) plus in-process Control and Node **once** and
   reuses that environment. Tests do not start their own stack and must not shell
@@ -177,8 +194,9 @@ holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local
   fluent builders on the Xcepto transition builder. Each test is 3–5 steps: actions plus
   `EvaluateConditionsForTransition` expectations. Shared Control state is driven with
   `EnsureCold` / `EnsureReady` by polling `/health`, not by retrying full SSR. HTML is a
-  one-shot assertion. Xcepto timeouts stay fail-fast (seconds, not minutes). Node OSD/disk
-  uses in-memory runtimes because systemd cannot manage the Testcontainer OSDs; Control talks
+  one-shot assertion. Xcepto timeouts stay fail-fast (seconds, not minutes).   Node OSD/disk
+  uses in-memory runtimes because systemd cannot manage the Testcontainer OSDs; the E2E Node sets
+  `ControlEndpoint` so join returns 200 and report loops POST inventory. Control talks
   to that container’s Ceph/RGW by `Process.Start` of `docker exec {containerId} ceph …`
   (the same argv Control uses when `COLDCEPH_CEPH_CONTAINER` is set). Xcepto is
   used only inside `ColdCeph.E2E.Tests`. The project-level `[SetUpFixture]` is the allowed
@@ -209,14 +227,15 @@ list from the shell for this workflow, and do not walk login or click pages by h
 # Local development
 
 Root `compose.yaml` is a **multi-host** Ceph for **local IDE getting-started only**: one container
-per node (`mon`, `mgr`, `node-a`/`node-b`/`node-c`, `rgw`). Each storage node has one BlueStore OSD
+per node (`mon`, `mgr`, `node-a`/`node-b`/`node-c`, `rgw`). Each service is written out in full
+(no YAML anchors). ColdCeph.Node is not a compose service. Each storage node has one BlueStore OSD
 on a tmpfs ramdisk (loop device, default 1GiB). Replica size 3 places one copy on each storage
 host. E2E does not use this file; the Xcepto `[SetUpFixture]` still starts a single Testcontainers
 `demo` container. Pin `CEPH_IMAGE` to a daemon tag that still ships the ceph-container entrypoints
 (`v7.0.3-stable-7.0-quincy-centos-stream8`); `latest-reef` does not.
 
 The cluster is fully ephemeral: no named volumes. MON, MGR, OSD, RGW, and `/etc/ceph` live on
-tmpfs. `./cc-debug down` discards the cluster; `./cc-debug up` always bootstraps a new
+tmpfs. `./cc-debug down` discards the cluster; `./cc-debug up` after a down bootstraps a new
 one. Storage nodes fetch conf/keyrings from the monitor over the compose network (HTTP on
 `CEPH_CONFIG_PORT`, not published to the host). If a storage container is recreated while the
 monitor is still up, its entrypoint **purges that hostname’s old OSDs** then prepares a fresh
@@ -226,22 +245,20 @@ must still never `out` / `purge` / destroy. The compose network is a pinned subn
 RGW answers on host 7481. The RGW entrypoint creates the `coldceph` S3 user once
 radosgw is listening.
 
-Compose also runs three **ColdCeph.Node** processes (`cc-a` / `cc-b` / `cc-c`) with `HostId`
-`node-a` / `node-b` / `node-c`, matching the CRUSH hosts. They use **host networking** so
-`POST /v1/hosts/join` reaches Control on `127.0.0.1` (docker-bridge hairpin to the host is
-dropped on this Linux setup). They listen on `7081` / `7082` / `7083`. The repo is bind-mounted
-**read-only**; `dotnet run` writes `obj`/`bin` under `/tmp` inside the container so it cannot
-lock the host IDE build. Each Node docker-execs into its OSD container to start/stop that
-host’s `ceph-osd`. Control’s Osds and Devices reconcilers visit **every enrolled host**, not
-the first one. Control runs from the IDE; Nodes join with
-`POST /v1/hosts/join` (no join token) and `X-ColdCeph-Node-Endpoint`. Hosts keeps each request
-**pending** until the operator Allows it on `/hosts`. Deny blocks that node until Allow.
-`COLDCEPH_CONTROL_ENDPOINT` for compose Nodes defaults to `http://127.0.0.1:8080`
-(override with `WEB_PORT` or `COLDCEPH_CONTROL_ENDPOINT` when Control is not on 8080). Credential and port defaults live in `.env.example` and
-in the Control/Node `Properties/launchSettings.json` profiles. Every default is overridable with
-the same env var name. Optional `COLDCEPH_NODE_ENDPOINT` is configured discovery: Control seeds
-that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only Control→Node command auth, not a
-join secret.
+ColdCeph.Node is **not** in compose. Run the `Node-a` / `Node-b` / `Node-c` launch profiles so
+each process matches a CRUSH host (`node-a` / `node-b` / `node-c`), listens on `7081` / `7082` /
+`7083`, and docker-execs into `coldceph-node-a` / `coldceph-node-b` / `coldceph-node-c` to
+start/stop that host’s `ceph-osd`. Host processes reach Control at `127.0.0.1` without docker
+hairpin. After Allow, each Node pushes OSD and device inventory to Control; Control’s Osds and
+Devices reconcilers visit **every enrolled host** for start/stop/wake/standby, not the first one.
+They do not poll Node GET lists. Control runs from the IDE (`Control` launch profile or
+`./cc-debug up`). Nodes join with `POST /v1/hosts/join` (no join token) and
+`X-ColdCeph-Node-Endpoint`. Hosts keeps each request **pending** until the operator Allows it on
+`/hosts`. Deny blocks that node until Allow. Credential and port defaults live in `.env.example`
+and in the Control/Node `Properties/launchSettings.json` profiles. Every default is overridable
+with the same env var name. Optional `COLDCEPH_NODE_ENDPOINT` is configured discovery: Control
+seeds that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only Control→Node command auth, not
+a join secret.
 
 Control talks to compose Ceph by running the `ceph` CLI from the Control process
 (`Process.Start`). Packaged installs use `ceph` on PATH (optional `COLDCEPH_CEPH_CONF` /

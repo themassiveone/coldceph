@@ -14,4 +14,5 @@ public interface ICephQueryProvider
     bool GetHasStaleOrIncomplete();
     bool GetHasFullOsds();
     IReadOnlyList<string> GetHealthChecks();
+    IReadOnlyDictionary<int, OsdMembershipDto> ListOsdMembership();
 }

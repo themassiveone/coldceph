@@ -6,6 +6,8 @@
       "workingDirectory": "..",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_HTTP_PORTS": "",
+        "ASPNETCORE_HTTPS_PORTS": "",
         "NODE_PORT": "7081",
         "COLDCEPH_NODE_TOKEN": "changeme",
         "COLDCEPH_HOST_ID": "node-a",
@@ -22,6 +24,8 @@
       "workingDirectory": "..",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_HTTP_PORTS": "",
+        "ASPNETCORE_HTTPS_PORTS": "",
         "NODE_PORT": "7082",
         "COLDCEPH_NODE_TOKEN": "changeme",
         "COLDCEPH_HOST_ID": "node-b",
@@ -38,6 +42,8 @@
       "workingDirectory": "..",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_HTTP_PORTS": "",
+        "ASPNETCORE_HTTPS_PORTS": "",
         "NODE_PORT": "7083",
         "COLDCEPH_NODE_TOKEN": "changeme",
         "COLDCEPH_HOST_ID": "node-c",

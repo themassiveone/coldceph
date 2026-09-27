@@ -26,6 +26,16 @@ public static class NodeAppComposition
         builder.Services.AddSingleton<HostsController>();
         builder.Services.AddSingleton<IControlHeartbeatClient, HttpControlHeartbeatClient>();
         builder.Services.AddHostedService<HostsHeartbeatLoop>();
+        if (config.ControlEndpoint is null)
+        {
+            builder.Services.AddSingleton<IControlOsdsReporter, NoopControlOsdsReporter>();
+            builder.Services.AddSingleton<IControlDevicesReporter, NoopControlDevicesReporter>();
+        }
+        else
+        {
+            builder.Services.AddSingleton<IControlOsdsReporter, HttpControlOsdsReporter>();
+            builder.Services.AddSingleton<IControlDevicesReporter, HttpControlDevicesReporter>();
+        }
         builder.Services.AddSingleton<IOsdRuntime>(services =>
         {
             var node = services.GetRequiredService<NodeConfig>();
@@ -36,6 +46,7 @@ public static class NodeAppComposition
         });
         builder.Services.AddSingleton<OsdsService>();
         builder.Services.AddSingleton<OsdsController>();
+        builder.Services.AddHostedService<OsdsReportLoop>();
         builder.Services.AddSingleton<IDiskPower>(services =>
         {
             var node = services.GetRequiredService<NodeConfig>();
@@ -45,6 +56,7 @@ public static class NodeAppComposition
         });
         builder.Services.AddSingleton<DevicesService>();
         builder.Services.AddSingleton<DevicesController>();
+        builder.Services.AddHostedService<DevicesReportLoop>();
         builder.Services.AddControllers()
             .AddApplicationPart(typeof(Program).Assembly);
     }

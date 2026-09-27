@@ -106,6 +106,28 @@ public sealed class OperatorAdapter : XceptoAdapter
         }));
     }
 
+    public void SeeOsds(string password)
+    {
+        AddStep(new ExpectationStepState("operator OSDs page lists an OSD", async () =>
+        {
+            await EnsureSignedInAsync(password);
+            var response = await _client.GetAsync(new Uri(_baseUrl, "/osds"));
+            var html = await response.Content.ReadAsStringAsync();
+            return response.IsSuccessStatusCode && html.Contains("osd.", StringComparison.Ordinal);
+        }));
+    }
+
+    public void SeeDevices(string password)
+    {
+        AddStep(new ExpectationStepState("operator devices page lists a drive", async () =>
+        {
+            await EnsureSignedInAsync(password);
+            var response = await _client.GetAsync(new Uri(_baseUrl, "/devices"));
+            var html = await response.Content.ReadAsStringAsync();
+            return response.IsSuccessStatusCode && html.Contains("d0", StringComparison.Ordinal);
+        }));
+    }
+
     public void SeeDashboard()
     {
         AddStep(new ExpectationStepState("operator dashboard is visible", async () =>

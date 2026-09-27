@@ -14,7 +14,8 @@ public sealed class IntegrityPagesHttpTests
         Assert.That(html, Does.Contain("Cold-storage"));
         Assert.That(html, Does.Contain("Raw Ceph health:"));
         Assert.That(html, Does.Not.Contain("http-equiv=\"refresh\""));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.GreaterThan(0));
+        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(1));
+        Assert.That(factory.Ceph.HealthDetailCalls, Is.Not.EqualTo(0));
     }
 
     [Test]

@@ -9,6 +9,7 @@ public sealed class DevicesService
     private readonly INodeDevicesClient _node;
     private readonly ControlConfig _config;
     private readonly Dictionary<string, DeviceDto> _devices = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _hostErrors = new(StringComparer.Ordinal);
 
     public DevicesService(INodeDevicesClient node, ControlConfig config)
     {
@@ -21,18 +22,26 @@ public sealed class DevicesService
     public DeviceDto? GetDevice(string deviceId)
         => _devices.TryGetValue(deviceId, out var device) ? device : null;
 
+    public IReadOnlyList<string> ListObservationErrors()
+        => _hostErrors.Select(pair => $"{pair.Key}: {pair.Value}").ToArray();
+
     public bool IsEveryDeviceStandby()
         => _devices.Values.All(device => device.PowerState == DevicePowerState.Standby);
 
     public void Seed(DeviceDto device) => _devices[device.DeviceId] = device;
 
-    public void RefreshFromNode(string hostId, Uri endpoint)
+    public void ApplyObserved(HostDevicesObservationDto observation)
     {
-        var observed = _node.List(endpoint);
-        foreach (var existing in _devices.Where(pair => pair.Value.HostId == hostId).Select(pair => pair.Key).ToArray())
+        foreach (var existing in _devices.Where(pair => pair.Value.HostId == observation.HostId).Select(pair => pair.Key).ToArray())
             _devices.Remove(existing);
-        foreach (var device in observed)
-            _devices[device.DeviceId] = device with { HostId = hostId };
+
+        foreach (var device in observation.Devices)
+            _devices[device.DeviceId] = device with { HostId = observation.HostId };
+
+        if (string.IsNullOrWhiteSpace(observation.Error))
+            _hostErrors.Remove(observation.HostId);
+        else
+            _hostErrors[observation.HostId] = observation.Error;
     }
 
     public void WakeAll(string hostId, Uri nodeEndpoint, string operationId)

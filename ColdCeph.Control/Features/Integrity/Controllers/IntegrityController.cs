@@ -14,7 +14,11 @@ public sealed class IntegrityController
 
     public IntegritySnapshot GetIntegrity() => _service.GetIntegrity();
 
+    public IntegritySnapshot GetLastIntegrity() => _service.GetLastIntegrity();
+
     public CephHealthRaw GetRawHealth() => _service.GetRawHealth();
 
-    public ReadinessPredicates GetPredicates() => _service.GetIntegrity().Predicates;
+    public IReadOnlyDictionary<int, OsdMembershipDto> ListOsdMembership() => _service.ListOsdMembership();
+
+    public ReadinessPredicates GetPredicates() => _service.GetLastIntegrity().Predicates;
 }

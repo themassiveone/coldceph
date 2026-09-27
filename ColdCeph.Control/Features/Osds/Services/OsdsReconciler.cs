@@ -49,7 +49,6 @@ public sealed class OsdsReconciler : BackgroundService
         {
             try
             {
-                _osds.RefreshFromNode(host.HostId, host.Endpoint);
                 if (state == StoragePlaneState.Waking)
                     _osds.StartAll(host.HostId, host.Endpoint, operationId);
                 if (state == StoragePlaneState.Sleeping)

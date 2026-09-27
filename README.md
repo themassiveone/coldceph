@@ -62,9 +62,10 @@ ephemeral: no named volumes, Ceph state is tmpfs. `./cc-debug down` wipes it;
 `./cc-debug up` bootstraps a new cluster. Compose pins `MON_IP` (`172.28.90.10`). Ready is
 `ceph -s` healthy, three OSDs up, and RGW on host 7481.
 
-`./cc-debug up` already starts three ColdCeph.Node processes (`cc-a` / `cc-b` / `cc-c`) and
-Control if it is not already serving `/health`. Open **Hosts** and **Allow** `node-a`, `node-b`,
-and `node-c`. Open **http://127.0.0.1:8080** or **http://localhost:8080** — unauthenticated
+`./cc-debug up` starts Ceph and Control if `/health` is not already ready. Start the `Node-a`,
+`Node-b`, and `Node-c` launch profiles. Open **Hosts** and **Allow** `node-a`, `node-b`, and
+`node-c`. Allowed Nodes then push OSD and disk inventory; reload OSDs and Physical drives.
+Open **http://127.0.0.1:8080** or **http://localhost:8080** — unauthenticated
 visits go to `/auth/login` (password `changeme`). `/health` is anonymous JSON if you want a bind
 check without the UI.
 
@@ -77,7 +78,7 @@ check without the UI.
 | S3 access key | `coldceph` | `CEPH_DEMO_ACCESS_KEY` |
 | S3 secret key | `coldcephsecret` | `CEPH_DEMO_SECRET_KEY` |
 | Demo user / bucket | `coldceph` / `cold` | `CEPH_DEMO_UID` / `CEPH_DEMO_BUCKET` |
-| Node a / b / c | http://127.0.0.1:7081–7083 | `NODE_A_HOST_PORT` / `NODE_B_HOST_PORT` / `NODE_C_HOST_PORT` |
+| Node a / b / c | http://127.0.0.1:7081–7083 | `NODE_PORT` on the Node-a/b/c profiles |
 | Node joins Control at | http://127.0.0.1:8080 | `COLDCEPH_CONTROL_ENDPOINT` / `WEB_PORT` |
 | Node token (Control→Node only) | `changeme` | `COLDCEPH_NODE_TOKEN` |
 | Node host ids | `node-a` / `node-b` / `node-c` | `COLDCEPH_HOST_ID` |
@@ -91,12 +92,9 @@ aws --endpoint-url http://127.0.0.1:7480 s3 ls \
   --access-key coldceph --secret-key coldcephsecret
 ```
 
-Compose also starts three ColdCeph.Node processes (`cc-a` / `cc-b` / `cc-c`) that docker-exec
-into the matching OSD containers. They use host networking so join requests reach Control on
-`127.0.0.1` (Linux docker-bridge hairpin to the host is dropped). They compile into `/tmp` on a
-read-only source mount, so they do not write the host `obj`/`bin` trees. Prefer those over
-launching Node from the IDE. If you do use the `Node-a` / `Node-b` / `Node-c` launch profiles, do
-not also run the compose `cc-*` services on the same ports.
+Run `Node-a` / `Node-b` / `Node-c` from the IDE. Each process docker-execs into the matching OSD
+container (`coldceph-node-a` / `coldceph-node-b` / `coldceph-node-c`) and joins Control on
+`127.0.0.1:8080`. Compose is Ceph only; do not put ColdCeph.Node in `compose.yaml`.
 
 Talk to Ceph from a shell without installing `ceph-common` (this helper is not what Control
 runs):
@@ -133,7 +131,7 @@ Local compose + operator HTML. Do not `docker compose up` or walk the UI by hand
 ./cc-debug down
 ```
 
-`up --build` rebuilds the Node images. Screenshots write under `.git/coldceph/debug/` (`WEB_PORT` /
+Screenshots write under `.git/coldceph/debug/` (`WEB_PORT` /
 `COLDCEPH_OPERATOR_URL`).
 
 CI runs both jobs. The E2E job does not start `compose.yaml`; Testcontainers owns the cluster.

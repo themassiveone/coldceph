@@ -1,6 +1,8 @@
 using ColdCeph.Control.Composition;
 using ColdCeph.Control.Features.Devices.Controllers;
 using ColdCeph.Control.Features.Devices.Services;
+using ColdCeph.Control.Features.Integrity.Controllers;
+using ColdCeph.Control.Features.Integrity.Services;
 using ColdCeph.Control.Features.Hosts.Controllers;
 using ColdCeph.Control.Features.Hosts.Services;
 using ColdCeph.Control.Features.Osds.Controllers;
@@ -49,7 +51,7 @@ public sealed class DevicesReconcilerTests
     {
         var harness = CreateTwoHosts();
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Node.ThrowOnListFor.Add(new Uri("http://127.0.0.1:7081"));
+        harness.Node.ThrowOnWakeFor.Add(new Uri("http://127.0.0.1:7081"));
 
         harness.Reconciler.ReconcileOnce();
 
@@ -77,7 +79,7 @@ public sealed class DevicesReconcilerTests
     {
         var harness = Create(osdRunning: false);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Node.ThrowOnList = true;
+        harness.Node.ThrowOnWake = true;
 
         Assert.DoesNotThrow(() => harness.Reconciler.ReconcileOnce());
         Assert.That(harness.Node.Commands, Is.Empty);
@@ -88,9 +90,9 @@ public sealed class DevicesReconcilerTests
     {
         var harness = Create(osdRunning: false);
         harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
-        harness.Node.ThrowOnList = true;
+        harness.Node.ThrowOnWake = true;
         harness.Reconciler.ReconcileOnce();
-        harness.Node.ThrowOnList = false;
+        harness.Node.ThrowOnWake = false;
 
         harness.Reconciler.ReconcileOnce();
 
@@ -115,12 +117,16 @@ public sealed class DevicesReconcilerTests
             Path = "/dev/sda",
             PowerState = osdRunning ? DevicePowerState.Active : DevicePowerState.Standby
         };
-        node.Inventory = [device];
         var devices = new DevicesService(node, config);
         devices.Seed(device);
         var hosts = new HostsService(config, clock);
         hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
-        var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds), new HostsController(hosts));
+        var integrity = new IntegrityController(new IntegrityService(
+            new FakeCephQueryProvider(),
+            new MemoryIntegrityRepository(),
+            new StoragePlaneController(plane),
+            clock));
+        var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds, integrity), new HostsController(hosts));
         return new Harness(plane, reconciler, node, devices);
     }
 
@@ -153,13 +159,18 @@ public sealed class DevicesReconcilerTests
             Path = "/dev/sdb",
             PowerState = DevicePowerState.Standby
         };
-        node.InventoryByEndpoint[hostA] = [deviceA];
-        node.InventoryByEndpoint[hostB] = [deviceB];
         var devices = new DevicesService(node, config);
+        devices.ApplyObserved(new HostDevicesObservationDto { HostId = "node-a", Devices = [deviceA] });
+        devices.ApplyObserved(new HostDevicesObservationDto { HostId = "node-b", Devices = [deviceB] });
         var hosts = new HostsService(config, clock);
         hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-a", Hostname = "node-a", ObservedAt = clock.UtcNow }, hostA);
         hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-b", Hostname = "node-b", ObservedAt = clock.UtcNow }, hostB);
-        var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds), new HostsController(hosts));
+        var integrity = new IntegrityController(new IntegrityService(
+            new FakeCephQueryProvider(),
+            new MemoryIntegrityRepository(),
+            new StoragePlaneController(plane),
+            clock));
+        var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds, integrity), new HostsController(hosts));
         return new Harness(plane, reconciler, node, devices);
     }
 

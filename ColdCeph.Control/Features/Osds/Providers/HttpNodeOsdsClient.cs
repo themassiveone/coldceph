@@ -16,9 +16,6 @@ public sealed class HttpNodeOsdsClient : INodeOsdsClient
         _config = config;
     }
 
-    public IReadOnlyList<OsdDto> List(Uri endpoint)
-        => Client(endpoint).GetFromJsonAsync<IReadOnlyList<OsdDto>>("/v1/osds").GetAwaiter().GetResult() ?? [];
-
     public OsdMutationResult Start(Uri endpoint, OsdMutationRequest request)
         => Post(endpoint, $"/v1/osds/{request.OsdId}/start", request);
 

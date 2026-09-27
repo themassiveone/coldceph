@@ -6,6 +6,7 @@ namespace ColdCeph.Node.Features.Hosts.Services;
 public sealed class HostsService
 {
     private readonly NodeConfig _config;
+    private bool _enrolled;
 
     public HostsService(NodeConfig config)
     {
@@ -19,4 +20,8 @@ public sealed class HostsService
             Hostname = _config.Hostname,
             ObservedAt = DateTimeOffset.UtcNow
         };
+
+    public bool IsControlEnrolled() => _enrolled;
+
+    public void NoteJoinStatus(int statusCode) => _enrolled = statusCode == 200;
 }

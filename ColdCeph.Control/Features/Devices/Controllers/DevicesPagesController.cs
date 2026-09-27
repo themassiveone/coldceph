@@ -1,3 +1,4 @@
+using ColdCeph.Control.Features.Devices.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,5 +15,10 @@ public sealed class DevicesPagesController : Controller
     }
 
     [HttpGet("/devices")]
-    public IActionResult Index() => View("Index", _devices.ListDevices());
+    public IActionResult Index()
+        => View("Index", new DevicesPageViewModel
+        {
+            Devices = _devices.ListDevices(),
+            Errors = _devices.ListObservationErrors()
+        });
 }

@@ -28,6 +28,24 @@ public sealed class DockerExecOsdRuntimeTests
         Assert.That(runtime.IsRunning(2), Is.False);
     }
 
+    [Test]
+    public void ListIds_parses_whoami_output()
+    {
+        var runner = new RecordingRunner { Output = "0\n" };
+        var runtime = new DockerExecOsdRuntime(runner, "coldceph-node-a");
+
+        Assert.That(runtime.ListIds(), Is.EqualTo(new[] { 0 }));
+    }
+
+    [Test]
+    public void ListIds_throws_when_docker_exec_fails()
+    {
+        var runner = new RecordingRunner { Throw = true };
+        var runtime = new DockerExecOsdRuntime(runner, "coldceph-node-a");
+
+        Assert.That(() => runtime.ListIds(), Throws.InvalidOperationException);
+    }
+
     private sealed class RecordingRunner : IProcessRunner
     {
         public List<string> Commands { get; } = [];
