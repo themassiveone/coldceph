@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>latest</LangVersion>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**\obj\**;**\bin\**</DefaultItemExcludes>
     <RepositoryUrl>https://github.com/themassiveone/coldceph</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>

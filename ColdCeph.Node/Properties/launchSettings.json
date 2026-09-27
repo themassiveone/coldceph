@@ -1,17 +1,51 @@
 {
   "profiles": {
-    "Node": {
+    "Node-a": {
       "commandName": "Project",
       "commandLineArgs": "",
       "workingDirectory": "..",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "NODE_PORT": "7080",
+        "NODE_PORT": "7081",
         "COLDCEPH_NODE_TOKEN": "changeme",
-        "COLDCEPH_HOST_ID": "dev",
-        "COLDCEPH_HOSTNAME": "dev",
+        "COLDCEPH_HOST_ID": "node-a",
+        "COLDCEPH_HOSTNAME": "node-a",
         "COLDCEPH_CONTROL_ENDPOINT": "http://127.0.0.1:8080",
-        "COLDCEPH_ADVERTISE_URL": "http://127.0.0.1:7080"
+        "COLDCEPH_ADVERTISE_URL": "http://127.0.0.1:7081",
+        "COLDCEPH_OSD_CONTAINER": "coldceph-node-a",
+        "COLDCEPH_NODE_DATA": ".local/coldceph-node-a"
+      }
+    },
+    "Node-b": {
+      "commandName": "Project",
+      "commandLineArgs": "",
+      "workingDirectory": "..",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "NODE_PORT": "7082",
+        "COLDCEPH_NODE_TOKEN": "changeme",
+        "COLDCEPH_HOST_ID": "node-b",
+        "COLDCEPH_HOSTNAME": "node-b",
+        "COLDCEPH_CONTROL_ENDPOINT": "http://127.0.0.1:8080",
+        "COLDCEPH_ADVERTISE_URL": "http://127.0.0.1:7082",
+        "COLDCEPH_OSD_CONTAINER": "coldceph-node-b",
+        "COLDCEPH_NODE_DATA": ".local/coldceph-node-b"
+      }
+    },
+    "Node-c": {
+      "commandName": "Project",
+      "commandLineArgs": "",
+      "workingDirectory": "..",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "NODE_PORT": "7083",
+        "COLDCEPH_NODE_TOKEN": "changeme",
+        "COLDCEPH_HOST_ID": "node-c",
+        "COLDCEPH_HOSTNAME": "node-c",
+        "COLDCEPH_CONTROL_ENDPOINT": "http://127.0.0.1:8080",
+        "COLDCEPH_ADVERTISE_URL": "http://127.0.0.1:7083",
+        "COLDCEPH_OSD_CONTAINER": "coldceph-node-c",
+        "COLDCEPH_NODE_DATA": ".local/coldceph-node-c"
       }
     }
   }

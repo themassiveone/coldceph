@@ -6,6 +6,8 @@ public sealed class InMemoryOsdRuntime : IOsdRuntime
 {
     private readonly HashSet<int> _running = [];
 
+    public IReadOnlyList<int> ListIds() => [];
+
     public bool IsRunning(int osdId) => _running.Contains(osdId);
 
     public void Start(int osdId) => _running.Add(osdId);

@@ -38,6 +38,33 @@ public sealed class DevicesServiceTests
         Assert.That(power.Commands, Does.Not.Contain("standby"));
     }
 
+    [Test]
+    public void ListDevices_maps_runtime_osds_when_an_osd_container_is_set()
+    {
+        var runtime = new FakeOsdRuntime();
+        runtime.Listed.Add(2);
+        var config = new NodeConfig { HostId = "node-a", OsdContainer = "coldceph-node-a" };
+        var osds = new OsdsService(runtime, config);
+        var devices = new DevicesService(new FakeDiskPower(), new OsdsController(osds), config);
+
+        var listed = devices.ListDevices();
+
+        Assert.That(listed.Select(device => device.MappedOsdId), Does.Contain(2));
+        Assert.That(listed.Single(device => device.MappedOsdId == 2).HostId, Is.EqualTo("node-a"));
+    }
+
+    [Test]
+    public void ListDevices_does_not_invent_disks_without_an_osd_container()
+    {
+        var runtime = new FakeOsdRuntime();
+        runtime.Listed.Add(2);
+        var config = new NodeConfig { HostId = "node-a" };
+        var osds = new OsdsService(runtime, config);
+        var devices = new DevicesService(new FakeDiskPower(), new OsdsController(osds), config);
+
+        Assert.That(devices.ListDevices(), Is.Empty);
+    }
+
     private static (DevicesService Devices, OsdsService Osds, FakeDiskPower Power, FakeOsdRuntime Runtime) Create()
     {
         var config = new NodeConfig { HostId = "h1", Hostname = "h1" };

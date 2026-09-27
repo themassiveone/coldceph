@@ -77,6 +77,34 @@ public sealed class StoragePlaneServiceTests
     }
 
     [Test]
+    public void EnterReady_clears_controller_owned_noout()
+    {
+        var plane = Create(out var repo, out var noout);
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+        plane.RequestSleep(operationId, "operator");
+        plane.EnterSleeping(operationId);
+        plane.EnterCold(operationId);
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+
+        Assert.That(noout.Commands, Does.Contain("osd unset-group noout hdd-osds"));
+        Assert.That(repo.Load().OwnedNoout, Is.Empty);
+    }
+
+    [Test]
+    public void EnterReady_does_not_unset_noout_the_controller_does_not_own()
+    {
+        var plane = Create(out _, out var noout);
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+
+        Assert.That(noout.Commands, Is.Empty);
+    }
+
+    [Test]
     public void RejectUnknownNooutClear_refuses_flags_the_controller_does_not_own()
     {
         var plane = Create(out _, out _);

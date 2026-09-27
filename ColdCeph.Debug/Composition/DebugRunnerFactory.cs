@@ -1,3 +1,6 @@
+using ColdCeph.Debug.Features.Compose.Controllers;
+using ColdCeph.Debug.Features.Compose.Providers;
+using ColdCeph.Debug.Features.Compose.Services;
 using ColdCeph.Debug.Features.Host.Controllers;
 using ColdCeph.Debug.Features.Host.Providers;
 using ColdCeph.Debug.Features.Host.Services;
@@ -13,7 +16,11 @@ public static class DebugRunnerFactory
     {
         var catalog = new OperatorPageCatalog();
         var pages = new PagesController(
-            new PageCaptureService(catalog, new OperatorHtmlSnapshot(), new ChromiumPageDriver()));
-        return new HostController(new DebugArgParser(), new HostCommandService(pages));
+            new PageCaptureService(catalog, new OperatorHtmlSnapshot(), new ChromiumPageDriver()),
+            new OperatorAllowService());
+        var health = new HttpControlHealth();
+        var compose = new ComposeController(
+            new ComposeStackService(new DockerComposeCli(), health, new DotnetControlProcess(health)));
+        return new HostController(new DebugArgParser(), new HostCommandService(pages, compose));
     }
 }

@@ -14,6 +14,7 @@ public sealed class ConfiguredNodeEndpointTests
         using var endpoint = EnvScope.Set("COLDCEPH_NODE_ENDPOINT", "http://127.0.0.1:7080");
         using var hostId = EnvScope.Set("COLDCEPH_NODE_HOST_ID", "dev");
         using var cephBinary = EnvScope.Set("COLDCEPH_CEPH_BINARY", null);
+        using var cephContainer = EnvScope.Set("COLDCEPH_CEPH_CONTAINER", null);
         var clock = new FakeClock();
         var hosts = new HostsService(ControlConfig.FromEnvironment(), clock);
 
@@ -29,6 +30,8 @@ public sealed class ConfiguredNodeEndpointTests
     {
         using var endpoint = EnvScope.Set("COLDCEPH_NODE_ENDPOINT", null);
         using var hostId = EnvScope.Set("COLDCEPH_NODE_HOST_ID", null);
+        using var cephBinary = EnvScope.Set("COLDCEPH_CEPH_BINARY", null);
+        using var cephContainer = EnvScope.Set("COLDCEPH_CEPH_CONTAINER", null);
         var hosts = new HostsService(ControlConfig.FromEnvironment(), new FakeClock());
 
         Assert.That(hosts.ListHosts(), Is.Empty);

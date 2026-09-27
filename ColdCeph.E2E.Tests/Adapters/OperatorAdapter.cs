@@ -134,6 +134,7 @@ public sealed class OperatorAdapter : XceptoAdapter
             var html = await response.Content.ReadAsStringAsync();
             return response.IsSuccessStatusCode
                    && html.Contains("Raw Ceph health:", StringComparison.Ordinal)
+                   && !html.Contains("UNAVAILABLE", StringComparison.Ordinal)
                    && (html.Contains("HEALTH_OK", StringComparison.Ordinal)
                        || html.Contains("HEALTH_WARN", StringComparison.Ordinal)
                        || html.Contains("HEALTH_ERR", StringComparison.Ordinal));

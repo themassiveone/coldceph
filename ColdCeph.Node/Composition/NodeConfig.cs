@@ -7,6 +7,7 @@ public sealed class NodeConfig
     public string Hostname { get; init; } = Environment.MachineName;
     public string NodeToken { get; init; } = "changeme";
     public string DataDirectory { get; init; } = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "coldceph-node");
+    public string? OsdContainer { get; init; }
     public Uri? ControlEndpoint { get; init; }
     public Uri AdvertiseEndpoint { get; init; } = new("http://127.0.0.1:7080");
 
@@ -29,6 +30,7 @@ public sealed class NodeConfig
             Hostname = hostname,
             NodeToken = token,
             DataDirectory = data ?? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "coldceph-node"),
+            OsdContainer = Optional("COLDCEPH_OSD_CONTAINER"),
             ControlEndpoint = control is null ? null : new Uri(control, UriKind.Absolute),
             AdvertiseEndpoint = new Uri(advertise, UriKind.Absolute)
         };

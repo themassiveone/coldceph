@@ -15,6 +15,7 @@ public sealed class ControlConfig
     public S3AdmissionMode S3Mode { get; init; } = S3AdmissionMode.Wait;
     public int RetryAfterSeconds { get; init; } = 30;
     public string CephBinary { get; init; } = "ceph";
+    public string? CephContainer { get; init; }
     public string? CephConf { get; init; }
     public string? CephKeyring { get; init; }
     public IReadOnlyList<Uri> ConfiguredNodeEndpoints { get; init; } = [];
@@ -26,7 +27,15 @@ public sealed class ControlConfig
     public IReadOnlyList<string> ListenUrls()
         => [$"http://*:{OperatorPort}", $"http://*:{S3Port}"];
 
-    public IReadOnlyList<string> BuildCephArguments(params string[] command)
+    public (string FileName, IReadOnlyList<string> Arguments) InvokeCeph(IReadOnlyList<string> command)
+    {
+        if (!string.IsNullOrWhiteSpace(CephContainer))
+            return ("docker", ["exec", CephContainer, "ceph", ..command]);
+
+        return (RequireCephProgram(CephBinary), BuildCephArguments(command));
+    }
+
+    public IReadOnlyList<string> BuildCephArguments(IReadOnlyList<string> command)
     {
         var arguments = new List<string>();
         if (!string.IsNullOrWhiteSpace(CephConf))
@@ -70,13 +79,33 @@ public sealed class ControlConfig
             S3Mode = string.Equals(mode, "retry", StringComparison.OrdinalIgnoreCase)
                 ? S3AdmissionMode.Retry
                 : S3AdmissionMode.Wait,
-            CephBinary = cephBinary,
+            CephBinary = RequireCephProgram(cephBinary),
+            CephContainer = Optional("COLDCEPH_CEPH_CONTAINER"),
             CephConf = Optional("COLDCEPH_CEPH_CONF"),
             CephKeyring = Optional("COLDCEPH_CEPH_KEYRING"),
             ConfiguredNodeEndpoints = ParseEndpoints(Optional("COLDCEPH_NODE_ENDPOINT")),
             ConfiguredNodeHostId = hostId,
             BindHttpListeners = Environment.GetEnvironmentVariable("COLDCEPH_BIND") != "0"
         };
+    }
+
+    internal static string RequireCephProgram(string configured)
+    {
+        var fileName = Path.GetFileName(configured);
+        if (!string.Equals(fileName, "ceph", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"COLDCEPH_CEPH_BINARY must be the ceph program, not '{configured}'.");
+
+        if (configured.Contains(Path.DirectorySeparatorChar)
+            || configured.Contains(Path.AltDirectorySeparatorChar)
+            || configured.Contains('/'))
+        {
+            if (!Path.IsPathRooted(configured))
+                throw new InvalidOperationException(
+                    "COLDCEPH_CEPH_BINARY must be the program name 'ceph' or an absolute path to ceph, not a relative script.");
+        }
+
+        return configured;
     }
 
     private static string? Optional(string name)

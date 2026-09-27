@@ -26,6 +26,24 @@ public sealed class SystemdOsdRuntimeTests
         Assert.That(runtime.IsRunning(7), Is.False);
     }
 
+    [Test]
+    public void ListIds_parses_systemd_unit_names()
+    {
+        var runner = new RecordingRunner { Output = "ceph-osd@3.service loaded active running\nceph-osd@4.service loaded inactive dead\n" };
+        var runtime = new SystemdOsdRuntime(runner);
+
+        Assert.That(runtime.ListIds(), Is.EquivalentTo(new[] { 3, 4 }));
+    }
+
+    [Test]
+    public void ListIds_is_empty_when_systemctl_fails()
+    {
+        var runner = new RecordingRunner { Throw = true };
+        var runtime = new SystemdOsdRuntime(runner);
+
+        Assert.That(runtime.ListIds(), Is.Empty);
+    }
+
     private sealed class RecordingRunner : IProcessRunner
     {
         public List<string> Commands { get; } = [];

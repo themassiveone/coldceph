@@ -51,6 +51,26 @@ public sealed class NodeConfigTests
     }
 
     [Test]
+    public void FromEnvironment_reads_the_osd_container()
+    {
+        using var container = EnvScope.Set("COLDCEPH_OSD_CONTAINER", "coldceph-node-a");
+
+        var config = NodeConfig.FromEnvironment();
+
+        Assert.That(config.OsdContainer, Is.EqualTo("coldceph-node-a"));
+    }
+
+    [Test]
+    public void FromEnvironment_leaves_osd_container_unset_by_default()
+    {
+        using var container = EnvScope.Set("COLDCEPH_OSD_CONTAINER", null);
+
+        var config = NodeConfig.FromEnvironment();
+
+        Assert.That(config.OsdContainer, Is.Null);
+    }
+
+    [Test]
     public void FromEnvironment_reads_the_control_endpoint()
     {
         using var control = EnvScope.Set("COLDCEPH_CONTROL_ENDPOINT", "http://127.0.0.1:8080");

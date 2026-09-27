@@ -17,12 +17,36 @@ public sealed class OsdsService
     }
 
     public IReadOnlyList<OsdDto> ListOsds()
-        => _osds.Values.Select(Refresh).ToArray();
+    {
+        SyncFromRuntime();
+        return _osds.Values.Select(Refresh).ToArray();
+    }
 
     public OsdDto? GetOsd(int osdId)
-        => _osds.TryGetValue(osdId, out var osd) ? Refresh(osd) : null;
+    {
+        SyncFromRuntime();
+        return _osds.TryGetValue(osdId, out var osd) ? Refresh(osd) : null;
+    }
 
     public void Seed(OsdDto osd) => _osds[osd.OsdId] = osd;
+
+    private void SyncFromRuntime()
+    {
+        foreach (var osdId in _runtime.ListIds())
+        {
+            if (_osds.ContainsKey(osdId))
+                continue;
+            _osds[osdId] = new OsdDto
+            {
+                OsdId = osdId,
+                HostId = _config.HostId,
+                DeviceId = $"{_config.HostId}-osd-{osdId}",
+                Up = false,
+                In = true,
+                ProcessRunning = false
+            };
+        }
+    }
 
     public OsdMutationResult Start(OsdMutationRequest request)
     {

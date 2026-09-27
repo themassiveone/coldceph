@@ -26,10 +26,23 @@ public static class NodeAppComposition
         builder.Services.AddSingleton<HostsController>();
         builder.Services.AddSingleton<IControlHeartbeatClient, HttpControlHeartbeatClient>();
         builder.Services.AddHostedService<HostsHeartbeatLoop>();
-        builder.Services.AddSingleton<IOsdRuntime, SystemdOsdRuntime>();
+        builder.Services.AddSingleton<IOsdRuntime>(services =>
+        {
+            var node = services.GetRequiredService<NodeConfig>();
+            var runner = services.GetRequiredService<IProcessRunner>();
+            return string.IsNullOrWhiteSpace(node.OsdContainer)
+                ? new SystemdOsdRuntime(runner)
+                : new DockerExecOsdRuntime(runner, node.OsdContainer!);
+        });
         builder.Services.AddSingleton<OsdsService>();
         builder.Services.AddSingleton<OsdsController>();
-        builder.Services.AddSingleton<IDiskPower, HdparmDiskPower>();
+        builder.Services.AddSingleton<IDiskPower>(services =>
+        {
+            var node = services.GetRequiredService<NodeConfig>();
+            return string.IsNullOrWhiteSpace(node.OsdContainer)
+                ? new HdparmDiskPower(services.GetRequiredService<IProcessRunner>())
+                : new MemoryDiskPower();
+        });
         builder.Services.AddSingleton<DevicesService>();
         builder.Services.AddSingleton<DevicesController>();
         builder.Services.AddControllers()

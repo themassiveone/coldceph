@@ -17,15 +17,10 @@ public sealed class ClusterHealthTests
             var op = builder.OperatorAdapterBuilder()
                 .WithBaseUrl(scenario.ControlAddress)
                 .Build();
-            var ceph = builder.CephAdapterBuilder()
-                .WithBinary(scenario.CephBinary)
-                .WithWorkingDirectory(scenario.RepositoryRoot)
-                .Build();
 
             op.EnsureCold(scenario.OperatorPassword);
             op.SeeStoragePlane("Cold");
             op.SeeCephHealthExists();
-            ceph.SeeHealthNotSilent();
         });
     }
 
@@ -42,6 +37,22 @@ public sealed class ClusterHealthTests
             op.EnsureCold(scenario.OperatorPassword);
             op.Wake();
             op.SeeStoragePlane("Ready");
+        });
+    }
+
+    [Test]
+    public async Task Sleep_reaches_cold_against_ceph()
+    {
+        var scenario = new ColdCephScenario();
+        await XceptoTest.Given(scenario, SharedTimeout.Timeout, builder =>
+        {
+            var op = builder.OperatorAdapterBuilder()
+                .WithBaseUrl(scenario.ControlAddress)
+                .Build();
+
+            op.EnsureReady(scenario.OperatorPassword);
+            op.Sleep();
+            op.SeeStoragePlane("Cold");
         });
     }
 }

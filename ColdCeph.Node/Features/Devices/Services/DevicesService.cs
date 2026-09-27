@@ -20,12 +20,40 @@ public sealed class DevicesService
     }
 
     public IReadOnlyList<DeviceDto> ListDevices()
-        => _devices.Values.Select(Refresh).ToArray();
+    {
+        SyncFromOsds();
+        return _devices.Values.Select(Refresh).ToArray();
+    }
 
     public DeviceDto? GetDevice(string deviceId)
-        => _devices.TryGetValue(deviceId, out var device) ? Refresh(device) : null;
+    {
+        SyncFromOsds();
+        return _devices.TryGetValue(deviceId, out var device) ? Refresh(device) : null;
+    }
 
     public void Seed(DeviceDto device) => _devices[device.DeviceId] = device;
+
+    private void SyncFromOsds()
+    {
+        if (string.IsNullOrWhiteSpace(_config.OsdContainer))
+            return;
+        foreach (var osd in _osds.ListOsds())
+        {
+            var deviceId = osd.DeviceId ?? $"{_config.HostId}-osd-{osd.OsdId}";
+            if (_devices.ContainsKey(deviceId))
+                continue;
+            _devices[deviceId] = new DeviceDto
+            {
+                DeviceId = deviceId,
+                HostId = _config.HostId,
+                MappedOsdId = osd.OsdId,
+                Wwn = deviceId,
+                Serial = deviceId,
+                Path = "/mnt/ramdisk/osd.img",
+                PowerState = DevicePowerState.Active
+            };
+        }
+    }
 
     public DeviceMutationResult Wake(DeviceMutationRequest request)
     {

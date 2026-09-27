@@ -23,6 +23,7 @@ public sealed class ControlAppFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("COLDCEPH_S3_MODE", "retry");
         Environment.SetEnvironmentVariable("COLDCEPH_NODE_ENDPOINT", null);
         Environment.SetEnvironmentVariable("COLDCEPH_CEPH_BINARY", null);
+        Environment.SetEnvironmentVariable("COLDCEPH_CEPH_CONTAINER", null);
         Environment.SetEnvironmentVariable("COLDCEPH_CEPH_CONF", null);
         Environment.SetEnvironmentVariable("COLDCEPH_CEPH_KEYRING", null);
     }

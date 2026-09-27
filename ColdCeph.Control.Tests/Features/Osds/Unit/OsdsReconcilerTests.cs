@@ -24,8 +24,46 @@ public sealed class OsdsReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Node.Commands, Does.Contain("start 0"));
+        Assert.That(harness.Node.Commands, Does.Contain("7080 start 0"));
         Assert.That(harness.Osds.IsEveryProcessRunning(), Is.True);
+    }
+
+    [Test]
+    public void Waking_starts_osds_on_every_enrolled_host()
+    {
+        var harness = CreateTwoHosts();
+        harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Node.Commands, Does.Contain("7081 start 0"));
+        Assert.That(harness.Node.Commands, Does.Contain("7082 start 1"));
+        Assert.That(harness.Node.Commands, Does.Not.Contain("7081 start 1"));
+        Assert.That(harness.Osds.ListOsds().Select(osd => osd.OsdId), Is.EquivalentTo(new[] { 0, 1 }));
+    }
+
+    [Test]
+    public void Refresh_from_one_host_does_not_drop_the_other_host_osds()
+    {
+        var harness = CreateTwoHosts();
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Osds.GetOsd(0)?.HostId, Is.EqualTo("node-a"));
+        Assert.That(harness.Osds.GetOsd(1)?.HostId, Is.EqualTo("node-b"));
+    }
+
+    [Test]
+    public void One_host_failure_still_starts_osds_on_the_other()
+    {
+        var harness = CreateTwoHosts();
+        harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
+        harness.Node.ThrowOnListFor.Add(new Uri("http://127.0.0.1:7081"));
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Node.Commands, Does.Contain("7082 start 1"));
+        Assert.That(harness.Node.Commands, Does.Not.Contain("7081 start 0"));
     }
 
     [Test]
@@ -62,7 +100,7 @@ public sealed class OsdsReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Node.Commands, Does.Contain("start 0"));
+        Assert.That(harness.Node.Commands, Does.Contain("7080 start 0"));
     }
 
     private static Harness Create(bool withHost)
@@ -81,6 +119,30 @@ public sealed class OsdsReconcilerTests
         var hosts = new HostsService(config, clock);
         if (withHost)
             hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
+        var reconciler = new OsdsReconciler(osds, new StoragePlaneController(plane), new HostsController(hosts));
+        return new Harness(plane, reconciler, node, osds);
+    }
+
+    private static Harness CreateTwoHosts()
+    {
+        var clock = new FakeClock();
+        var config = new ControlConfig();
+        var plane = new StoragePlaneService(new MemoryStoragePlaneRepository(), new RecordingNooutProvider(), clock, config);
+        var hostA = new Uri("http://127.0.0.1:7081");
+        var hostB = new Uri("http://127.0.0.1:7082");
+        var node = new FakeNodeOsdsClient();
+        node.InventoryByEndpoint[hostA] =
+        [
+            new OsdDto { OsdId = 0, HostId = "node-a", DeviceId = "d0", Up = false, In = true, ProcessRunning = false }
+        ];
+        node.InventoryByEndpoint[hostB] =
+        [
+            new OsdDto { OsdId = 1, HostId = "node-b", DeviceId = "d1", Up = false, In = true, ProcessRunning = false }
+        ];
+        var osds = new OsdsService(node, config);
+        var hosts = new HostsService(config, clock);
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-a", Hostname = "node-a", ObservedAt = clock.UtcNow }, hostA);
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-b", Hostname = "node-b", ObservedAt = clock.UtcNow }, hostB);
         var reconciler = new OsdsReconciler(osds, new StoragePlaneController(plane), new HostsController(hosts));
         return new Harness(plane, reconciler, node, osds);
     }

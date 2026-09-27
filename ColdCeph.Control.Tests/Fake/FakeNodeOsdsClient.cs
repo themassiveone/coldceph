@@ -10,25 +10,31 @@ public sealed class FakeNodeOsdsClient : INodeOsdsClient
 
     public List<OsdDto> Inventory { get; set; } = [];
 
+    public Dictionary<Uri, List<OsdDto>> InventoryByEndpoint { get; } = [];
+
     public bool ThrowOnList { get; set; }
+
+    public HashSet<Uri> ThrowOnListFor { get; } = [];
 
     public IReadOnlyList<OsdDto> List(Uri endpoint)
     {
-        if (ThrowOnList)
+        if (ThrowOnList || ThrowOnListFor.Contains(endpoint))
             throw new InvalidOperationException("node down");
+        if (InventoryByEndpoint.TryGetValue(endpoint, out var listed))
+            return listed;
         return Inventory;
     }
 
     public OsdMutationResult Start(Uri endpoint, OsdMutationRequest request)
     {
-        Commands.Add($"start {request.OsdId}");
+        Commands.Add($"{endpoint.Port} start {request.OsdId}");
         Running = true;
         return new OsdMutationResult(request.OsdId, true, false);
     }
 
     public OsdMutationResult Stop(Uri endpoint, OsdMutationRequest request)
     {
-        Commands.Add($"stop {request.OsdId}");
+        Commands.Add($"{endpoint.Port} stop {request.OsdId}");
         Running = false;
         return new OsdMutationResult(request.OsdId, false, false);
     }

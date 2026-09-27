@@ -8,13 +8,13 @@ public sealed class CephCluster : IAsyncDisposable
 {
     public const string Image = "quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8";
     public const int RgwPort = 8080;
+    public const string NooutScope = "hdd-osds";
 
     private readonly IContainer _container;
-    private string? _wrapperPath;
     private bool _disposed;
 
     public Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
-    public string CephBinary { get; private set; } = "ceph";
+    public string ContainerId => _container.Id;
 
     public CephCluster()
     {
@@ -49,8 +49,9 @@ public sealed class CephCluster : IAsyncDisposable
     {
         await _container.StartAsync(cancellationToken);
         RgwAddress = new Uri($"http://127.0.0.1:{_container.GetMappedPublicPort(RgwPort)}");
-        CephBinary = WriteWrapper(_container.Id);
         await SilenceDemoHealthWarningsAsync();
+        await EnsureNooutScopeAsync();
+        await WaitForHealthOkAsync();
         await WaitForRgwAsync(cancellationToken);
     }
 
@@ -60,16 +61,6 @@ public sealed class CephCluster : IAsyncDisposable
             return;
         _disposed = true;
         await _container.DisposeAsync();
-        if (_wrapperPath is not null)
-        {
-            try
-            {
-                File.Delete(_wrapperPath);
-            }
-            catch (IOException)
-            {
-            }
-        }
     }
 
     private async Task SilenceDemoHealthWarningsAsync()
@@ -77,7 +68,11 @@ public sealed class CephCluster : IAsyncDisposable
         string[][] commands =
         [
             ["ceph", "config", "set", "global", "mon_warn_on_pool_no_redundancy", "false"],
-            ["ceph", "config", "set", "global", "mon_warn_on_too_few_osds", "false"]
+            ["ceph", "config", "set", "global", "mon_warn_on_too_few_osds", "false"],
+            ["ceph", "health", "mute", "POOL_NO_REDUNDANCY"],
+            ["ceph", "health", "mute", "TOO_FEW_OSDS"],
+            ["ceph", "health", "mute", "AUTH_INSECURE_GLOBAL_ID_RECLAIM"],
+            ["ceph", "health", "mute", "AUTH_INSECURE_GLOBAL_ID_RECLAIM_ALLOWED"]
         ];
         foreach (var command in commands)
         {
@@ -88,6 +83,42 @@ public sealed class CephCluster : IAsyncDisposable
             catch (Exception)
             {
             }
+        }
+    }
+
+    private async Task WaitForHealthOkAsync()
+    {
+        var deadline = DateTime.UtcNow.AddMinutes(2);
+        string? last = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            var result = await _container.ExecAsync(["ceph", "health", "--format", "json"]);
+            last = result.Stdout;
+            if (result.ExitCode == 0 && last.Contains("HEALTH_OK", StringComparison.Ordinal))
+                return;
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        throw new InvalidOperationException(
+            $"Demo Ceph did not reach HEALTH_OK (Integrity would FAULT at READY). Last health: {last}");
+    }
+
+    private async Task EnsureNooutScopeAsync()
+    {
+        try
+        {
+            _ = await _container.ExecAsync(["ceph", "osd", "crush", "add-bucket", NooutScope, "host"]);
+        }
+        catch (Exception)
+        {
+        }
+
+        try
+        {
+            _ = await _container.ExecAsync(["ceph", "osd", "crush", "move", NooutScope, "root=default"]);
+        }
+        catch (Exception)
+        {
         }
     }
 
@@ -114,25 +145,5 @@ public sealed class CephCluster : IAsyncDisposable
         }
 
         throw new InvalidOperationException($"RGW did not become reachable at {RgwAddress}.", last);
-    }
-
-    private string WriteWrapper(string containerId)
-    {
-        var suffix = containerId.Length >= 12 ? containerId[..12] : containerId;
-        var path = Path.Join(Path.GetTempPath(), $"coldceph-ceph-{suffix}");
-        File.WriteAllText(path, $"""
-            #!/usr/bin/env bash
-            exec docker exec {containerId} ceph "$@"
-            """);
-        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-        {
-            File.SetUnixFileMode(
-                path,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
-                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-        }
-        _wrapperPath = path;
-        return path;
     }
 }

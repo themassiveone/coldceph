@@ -44,4 +44,23 @@ public sealed class OsdsServiceTests
             DesiredRunning = true
         }), Throws.InvalidOperationException);
     }
+
+    [Test]
+    public void ListOsds_includes_ids_reported_by_the_runtime()
+    {
+        var runtime = new FakeOsdRuntime();
+        runtime.Listed.Add(4);
+        var osds = new OsdsService(runtime, new NodeConfig { HostId = "node-a" });
+
+        Assert.That(osds.ListOsds().Select(osd => osd.OsdId), Does.Contain(4));
+        Assert.That(osds.ListOsds().Single(osd => osd.OsdId == 4).HostId, Is.EqualTo("node-a"));
+    }
+
+    [Test]
+    public void ListOsds_does_not_invent_ids_when_the_runtime_lists_none()
+    {
+        var osds = new OsdsService(new FakeOsdRuntime(), new NodeConfig { HostId = "node-a" });
+
+        Assert.That(osds.ListOsds(), Is.Empty);
+    }
 }

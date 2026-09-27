@@ -16,8 +16,14 @@ public sealed class CephNooutProvider : INooutProvider
     }
 
     public void SetGroupNoout(string scope)
-        => _runner.Run(_config.CephBinary, _config.BuildCephArguments("osd", "set-group", "noout", scope));
+        => Run("osd", "set-group", "noout", scope);
 
     public void UnsetGroupNoout(string scope)
-        => _runner.Run(_config.CephBinary, _config.BuildCephArguments("osd", "unset-group", "noout", scope));
+        => Run("osd", "unset-group", "noout", scope);
+
+    private void Run(params string[] command)
+    {
+        var invoke = _config.InvokeCeph(command);
+        _runner.Run(invoke.FileName, invoke.Arguments);
+    }
 }

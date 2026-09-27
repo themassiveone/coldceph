@@ -109,7 +109,8 @@ Invariants:
 - Startup: each slice reconciles from Ceph/nodes/disks; persisted `COLD` is not trusted.
 - One StoragePlane transition lease; many S3 requests create one pending-work signal, one wake.
 - Writes fail closed unless Integrity reports `write_ready`; cold `HEALTH_ERR` is classified
-  expected, not hidden.
+expected, not hidden. Controller-owned scoped `noout` (OSDMAP_FLAGS) is expected, not a
+reason to `FAULT`.
 
 Persistence: SQLite under `/var/lib/coldceph` behind the owning slice’s repositories. Never on
 sleeping HDDs.
@@ -178,7 +179,8 @@ holds the connection; retry-mode returns 503 + `Retry-After`. No unlimited local
   `EnsureCold` / `EnsureReady` by polling `/health`, not by retrying full SSR. HTML is a
   one-shot assertion. Xcepto timeouts stay fail-fast (seconds, not minutes). Node OSD/disk
   uses in-memory runtimes because systemd cannot manage the Testcontainer OSDs; Control talks
-  to that container’s Ceph/RGW through a `docker exec` wrapper the fixture writes. Xcepto is
+  to that container’s Ceph/RGW by `Process.Start` of `docker exec {containerId} ceph …`
+  (the same argv Control uses when `COLDCEPH_CEPH_CONTAINER` is set). Xcepto is
   used only inside `ColdCeph.E2E.Tests`. The project-level `[SetUpFixture]` is the allowed
   exception to “no OneTimeSetUp on fixtures”.
 
@@ -195,10 +197,14 @@ E2E job that only runs `ColdCeph.E2E.Tests`. The `[SetUpFixture]` starts Ceph vi
 `agent-up.json` launches local Control with injected `WEB_PORT`. Applications consume that
 variable; do not hard-code the development operator port when integrating with Agent-Up.
 
-`./cc-debug` (or `./cc-debug screenshot`) signs in and captures every operator HTML page from a
-running Control. Optional path limits the capture. `pages` lists routes. Control URL is
+`./cc-debug` is the maintainer workflow CLI (like `au-debug`). `up` runs `docker compose up -d --wait`
+and starts Control only when `/health` is not already ready. `status` prints compose `ps` plus
+Control readiness. `allow` POSTs Hosts Allow for every pending join (or one host id). `down` stops
+compose and stops Control only if `up` started it. `./cc-debug` (or `screenshot`) signs in and
+captures operator HTML. Optional path limits the capture. `pages` lists routes. Control URL is
 `COLDCEPH_OPERATOR_URL` or `http://127.0.0.1:$WEB_PORT`. Screenshots write under
-`.git/coldceph/debug/`. Do not walk login or click pages by hand for visual inspection.
+`.git/coldceph/debug/`. Do not `docker compose up` or `dotnet run` Control with a one-off env
+list from the shell for this workflow, and do not walk login or click pages by hand.
 
 # Local development
 
@@ -210,7 +216,7 @@ host. E2E does not use this file; the Xcepto `[SetUpFixture]` still starts a sin
 (`v7.0.3-stable-7.0-quincy-centos-stream8`); `latest-reef` does not.
 
 The cluster is fully ephemeral: no named volumes. MON, MGR, OSD, RGW, and `/etc/ceph` live on
-tmpfs. `docker compose down` discards the cluster; `docker compose up` always bootstraps a new
+tmpfs. `./cc-debug down` discards the cluster; `./cc-debug up` always bootstraps a new
 one. Storage nodes fetch conf/keyrings from the monitor over the compose network (HTTP on
 `CEPH_CONFIG_PORT`, not published to the host). If a storage container is recreated while the
 monitor is still up, its entrypoint **purges that hostname’s old OSDs** then prepares a fresh
@@ -218,17 +224,31 @@ ramdisk OSD so CRUSH matches the live disks. That purge is compose bootstrap onl
 must still never `out` / `purge` / destroy. The compose network is a pinned subnet with a static
 `MON_IP` (`172.28.90.10`). Ready means `ceph osd tree` shows three hosts, `ceph -s` is healthy, and
 RGW answers on host 7481. The RGW entrypoint creates the `coldceph` S3 user once
-radosgw is listening. Credential and port defaults live in `.env.example` and in the
-Control/Node `Properties/launchSettings.json` profiles. Every default is overridable
-with the same env var name. Control runs with zero nodes. A Node asks to join with `POST /v1/hosts/join` (no join
-token) and `X-ColdCeph-Node-Endpoint`. Hosts keeps the request **pending** until the operator
-Allows it on `/hosts`. Deny blocks that node until Allow. Optional `COLDCEPH_NODE_ENDPOINT` is
-configured discovery: Control seeds that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only
-Control→Node command auth, not a join secret.
+radosgw is listening.
 
-Control talks to compose Ceph through `COLDCEPH_CEPH_BINARY` (default wrapper `docker/ceph/ceph`)
-and to RGW through `COLDCEPH_RGW`. Optional `COLDCEPH_CEPH_CONF` / `COLDCEPH_CEPH_KEYRING` are
-prepended as `--conf` / `--keyring` when a host `ceph` binary is used instead of the wrapper.
+Compose also runs three **ColdCeph.Node** processes (`cc-a` / `cc-b` / `cc-c`) with `HostId`
+`node-a` / `node-b` / `node-c`, matching the CRUSH hosts. They use **host networking** so
+`POST /v1/hosts/join` reaches Control on `127.0.0.1` (docker-bridge hairpin to the host is
+dropped on this Linux setup). They listen on `7081` / `7082` / `7083`. The repo is bind-mounted
+**read-only**; `dotnet run` writes `obj`/`bin` under `/tmp` inside the container so it cannot
+lock the host IDE build. Each Node docker-execs into its OSD container to start/stop that
+host’s `ceph-osd`. Control’s Osds and Devices reconcilers visit **every enrolled host**, not
+the first one. Control runs from the IDE; Nodes join with
+`POST /v1/hosts/join` (no join token) and `X-ColdCeph-Node-Endpoint`. Hosts keeps each request
+**pending** until the operator Allows it on `/hosts`. Deny blocks that node until Allow.
+`COLDCEPH_CONTROL_ENDPOINT` for compose Nodes defaults to `http://127.0.0.1:8080`
+(override with `WEB_PORT` or `COLDCEPH_CONTROL_ENDPOINT` when Control is not on 8080). Credential and port defaults live in `.env.example` and
+in the Control/Node `Properties/launchSettings.json` profiles. Every default is overridable with
+the same env var name. Optional `COLDCEPH_NODE_ENDPOINT` is configured discovery: Control seeds
+that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only Control→Node command auth, not a
+join secret.
+
+Control talks to compose Ceph by running the `ceph` CLI from the Control process
+(`Process.Start`). Packaged installs use `ceph` on PATH (optional `COLDCEPH_CEPH_CONF` /
+`COLDCEPH_CEPH_KEYRING`). Local compose uses `COLDCEPH_CEPH_CONTAINER` (default
+`coldceph-mon`) so Control runs `docker exec {container} ceph …` — never a repo bash
+wrapper. `docker/ceph/ceph` stays a maintainer convenience for a shell, not a Control
+argv. Control talks to RGW through `COLDCEPH_RGW`.
 
 # Gold Standards
 

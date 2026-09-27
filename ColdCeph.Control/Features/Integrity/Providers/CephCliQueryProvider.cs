@@ -109,7 +109,8 @@ public sealed class CephCliQueryProvider : ICephQueryProvider
                 && hit.ExpiresAt > now)
                 return hit.Output;
 
-            var output = _runner.Run(_config.CephBinary, _config.BuildCephArguments(["--format", "json", ..command]));
+            var invoke = _config.InvokeCeph(["--format", "json", ..command]);
+            var output = _runner.Run(invoke.FileName, invoke.Arguments);
             if (_config.CephQueryCacheTtl > TimeSpan.Zero)
                 _cache[key] = new CachedOutput(output, now + _config.CephQueryCacheTtl);
             return output;

@@ -27,7 +27,34 @@ public sealed class DevicesReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Node.Commands, Does.Contain("wake d0"));
+        Assert.That(harness.Node.Commands, Does.Contain("7080 wake d0"));
+    }
+
+    [Test]
+    public void Waking_wakes_disks_on_every_enrolled_host()
+    {
+        var harness = CreateTwoHosts();
+        harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Node.Commands, Does.Contain("7081 wake d0"));
+        Assert.That(harness.Node.Commands, Does.Contain("7082 wake d1"));
+        Assert.That(harness.Node.Commands, Does.Not.Contain("7081 wake d1"));
+        Assert.That(harness.Devices.ListDevices().Select(device => device.DeviceId), Is.EquivalentTo(new[] { "d0", "d1" }));
+    }
+
+    [Test]
+    public void One_host_failure_still_wakes_disks_on_the_other()
+    {
+        var harness = CreateTwoHosts();
+        harness.Plane.RequestWake(OperationIdRules.Create().Value, "operator");
+        harness.Node.ThrowOnListFor.Add(new Uri("http://127.0.0.1:7081"));
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Node.Commands, Does.Contain("7082 wake d1"));
+        Assert.That(harness.Node.Commands, Does.Not.Contain("7081 wake d0"));
     }
 
     [Test]
@@ -42,7 +69,7 @@ public sealed class DevicesReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Node.Commands, Does.Not.Contain("standby d0"));
+        Assert.That(harness.Node.Commands, Does.Not.Contain("7080 standby d0"));
     }
 
     [Test]
@@ -67,7 +94,7 @@ public sealed class DevicesReconcilerTests
 
         harness.Reconciler.ReconcileOnce();
 
-        Assert.That(harness.Node.Commands, Does.Contain("wake d0"));
+        Assert.That(harness.Node.Commands, Does.Contain("7080 wake d0"));
     }
 
     private static Harness Create(bool osdRunning)
@@ -94,8 +121,51 @@ public sealed class DevicesReconcilerTests
         var hosts = new HostsService(config, clock);
         hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "h1", Hostname = "h1", ObservedAt = clock.UtcNow }, new Uri("http://127.0.0.1:7080"));
         var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds), new HostsController(hosts));
-        return new Harness(plane, reconciler, node);
+        return new Harness(plane, reconciler, node, devices);
     }
 
-    private sealed record Harness(StoragePlaneService Plane, DevicesReconciler Reconciler, FakeNodeDevicesClient Node);
+    private static Harness CreateTwoHosts()
+    {
+        var clock = new FakeClock();
+        var config = new ControlConfig();
+        var plane = new StoragePlaneService(new MemoryStoragePlaneRepository(), new RecordingNooutProvider(), clock, config);
+        var osds = new OsdsService(new FakeNodeOsdsClient(), config);
+        var hostA = new Uri("http://127.0.0.1:7081");
+        var hostB = new Uri("http://127.0.0.1:7082");
+        var node = new FakeNodeDevicesClient();
+        var deviceA = new DeviceDto
+        {
+            DeviceId = "d0",
+            HostId = "node-a",
+            MappedOsdId = 0,
+            Wwn = "wwn",
+            Serial = "s0",
+            Path = "/dev/sda",
+            PowerState = DevicePowerState.Standby
+        };
+        var deviceB = new DeviceDto
+        {
+            DeviceId = "d1",
+            HostId = "node-b",
+            MappedOsdId = 1,
+            Wwn = "wwn",
+            Serial = "s1",
+            Path = "/dev/sdb",
+            PowerState = DevicePowerState.Standby
+        };
+        node.InventoryByEndpoint[hostA] = [deviceA];
+        node.InventoryByEndpoint[hostB] = [deviceB];
+        var devices = new DevicesService(node, config);
+        var hosts = new HostsService(config, clock);
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-a", Hostname = "node-a", ObservedAt = clock.UtcNow }, hostA);
+        hosts.RegisterHeartbeat(new NodeStatusDto { HostId = "node-b", Hostname = "node-b", ObservedAt = clock.UtcNow }, hostB);
+        var reconciler = new DevicesReconciler(devices, new StoragePlaneController(plane), new OsdsController(osds), new HostsController(hosts));
+        return new Harness(plane, reconciler, node, devices);
+    }
+
+    private sealed record Harness(
+        StoragePlaneService Plane,
+        DevicesReconciler Reconciler,
+        FakeNodeDevicesClient Node,
+        DevicesService Devices);
 }

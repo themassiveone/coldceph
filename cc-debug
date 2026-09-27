@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Capture ColdCeph operator HTML the way au-debug captures Agent-Up surfaces.
+# Bring up compose Ceph + Nodes, and Control if /health is not already ready.
+# Capture operator HTML the way au-debug captures Agent-Up surfaces.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

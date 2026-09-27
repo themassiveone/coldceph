@@ -137,6 +137,7 @@ public sealed class StoragePlaneService
             record = _repository.Load();
             record.LastReadyAt = _clock.UtcNow;
             ReleaseLease(record);
+            ClearOwnedNooutCore(record);
             _repository.Save(record);
         }
     }
@@ -182,11 +183,16 @@ public sealed class StoragePlaneService
         lock (_gate)
         {
             var record = _repository.Load();
-            foreach (var owned in record.OwnedNoout.ToArray())
-                _noout.UnsetGroupNoout(owned.Scope);
-            record.OwnedNoout.Clear();
+            ClearOwnedNooutCore(record);
             _repository.Save(record);
         }
+    }
+
+    private void ClearOwnedNooutCore(StoragePlaneRecord record)
+    {
+        foreach (var owned in record.OwnedNoout.ToArray())
+            _noout.UnsetGroupNoout(owned.Scope);
+        record.OwnedNoout.Clear();
     }
 
     public void RejectUnknownNooutClear(string scope)

@@ -93,6 +93,47 @@ public sealed class IntegrityServiceTests
     }
 
     [Test]
+    public void Controller_owned_noout_flags_are_expected_when_ready()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_WARN",
+            Summary = "noout flag(s) set",
+            Checks = ["OSDMAP_FLAGS: noout flag(s) set"]
+        };
+        ceph.HealthChecks = ["OSDMAP_FLAGS: noout flag(s) set"];
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
+        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.False);
+    }
+
+    [Test]
+    public void Other_osdmap_flags_remain_unexpected_when_ready()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Health = new CephHealthRaw
+        {
+            Status = "HEALTH_WARN",
+            Summary = "noup flag(s) set",
+            Checks = ["OSDMAP_FLAGS: noup flag(s) set"]
+        };
+        ceph.HealthChecks = ["OSDMAP_FLAGS: noup flag(s) set"];
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
+    }
+
+    [Test]
     public void Write_ready_requires_clean_pgs_and_fails_closed_on_recovery()
     {
         var (integrity, ceph, _) = Create();

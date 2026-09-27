@@ -118,6 +118,9 @@ public sealed class IntegrityService
         if (Contains(check, "unfound") || Contains(check, "inconsistent") || Contains(check, "incomplete"))
             return HealthClassification.Unexpected;
 
+        if (Contains(check, "noout"))
+            return HealthClassification.ExpectedCold;
+
         var expectedCold = Contains(check, "osd down")
                            || Contains(check, "osds down")
                            || Contains(check, "pg inactive")

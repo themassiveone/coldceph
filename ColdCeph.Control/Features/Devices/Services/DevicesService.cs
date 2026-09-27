@@ -26,44 +26,36 @@ public sealed class DevicesService
 
     public void Seed(DeviceDto device) => _devices[device.DeviceId] = device;
 
-    public void Observe(IEnumerable<DeviceDto> observed)
+    public void RefreshFromNode(string hostId, Uri endpoint)
     {
-        _devices.Clear();
+        var observed = _node.List(endpoint);
+        foreach (var existing in _devices.Where(pair => pair.Value.HostId == hostId).Select(pair => pair.Key).ToArray())
+            _devices.Remove(existing);
         foreach (var device in observed)
-            _devices[device.DeviceId] = device;
+            _devices[device.DeviceId] = device with { HostId = hostId };
     }
 
-    public void RefreshFromNode(Uri endpoint)
-        => Observe(_node.List(endpoint));
+    public void WakeAll(string hostId, Uri nodeEndpoint, string operationId)
+        => MutateHost(hostId, nodeEndpoint, operationId, DevicePowerState.Active);
 
-    public void WakeAll(Uri nodeEndpoint, string operationId)
+    public void StandbyAll(string hostId, Uri nodeEndpoint, string operationId)
+        => MutateHost(hostId, nodeEndpoint, operationId, DevicePowerState.Standby);
+
+    private void MutateHost(string hostId, Uri nodeEndpoint, string operationId, DevicePowerState desired)
     {
-        foreach (var device in _devices.Values.ToArray())
+        foreach (var device in _devices.Values.Where(candidate => candidate.HostId == hostId).ToArray())
         {
-            var result = _node.Wake(nodeEndpoint, new DeviceMutationRequest
+            var request = new DeviceMutationRequest
             {
                 DeviceId = device.DeviceId,
                 OperationId = operationId,
                 ControllerIdentity = _config.ControllerIdentity,
                 Deadline = DateTimeOffset.UtcNow.AddMinutes(5),
-                DesiredPowerState = DevicePowerState.Active
-            });
-            _devices[device.DeviceId] = device with { PowerState = result.PowerState };
-        }
-    }
-
-    public void StandbyAll(Uri nodeEndpoint, string operationId)
-    {
-        foreach (var device in _devices.Values.ToArray())
-        {
-            var result = _node.Standby(nodeEndpoint, new DeviceMutationRequest
-            {
-                DeviceId = device.DeviceId,
-                OperationId = operationId,
-                ControllerIdentity = _config.ControllerIdentity,
-                Deadline = DateTimeOffset.UtcNow.AddMinutes(5),
-                DesiredPowerState = DevicePowerState.Standby
-            });
+                DesiredPowerState = desired
+            };
+            var result = desired == DevicePowerState.Active
+                ? _node.Wake(nodeEndpoint, request)
+                : _node.Standby(nodeEndpoint, request);
             _devices[device.DeviceId] = device with { PowerState = result.PowerState };
         }
     }

@@ -1,5 +1,5 @@
 using ColdCeph.Debug.Features.Pages.Interfaces;
-using ColdCeph.Debug.Features.Pages.Services;
+using ColdCeph.Debug.Shared;
 
 namespace ColdCeph.Debug.Features.Pages.Services;
 
@@ -29,7 +29,7 @@ public sealed class PageCaptureService
             var slug = page.Path == "/" ? "storage" : page.Path.Trim('/').Replace('/', '-');
             var htmlPath = Path.Join(outputRoot, slug + ".html");
             var pngPath = Path.Join(outputRoot, slug + ".png");
-            var pageUri = new Uri(OperatorUrl(), page.Path);
+            var pageUri = new Uri(OperatorEndpoint.Url(), page.Path);
             Console.WriteLine($"capturing: {page.Path}");
             await _html.SaveAsync(pageUri, page.Anonymous, htmlPath, cancellationToken);
             await _capture.CaptureFileAsync(htmlPath, pngPath, cancellationToken);
@@ -37,15 +37,6 @@ public sealed class PageCaptureService
         }
 
         return written;
-    }
-
-    private static Uri OperatorUrl()
-    {
-        var configured = Environment.GetEnvironmentVariable("COLDCEPH_OPERATOR_URL");
-        if (!string.IsNullOrWhiteSpace(configured))
-            return new Uri(configured.TrimEnd('/') + "/", UriKind.Absolute);
-        var port = Environment.GetEnvironmentVariable("WEB_PORT") ?? "8080";
-        return new Uri($"http://127.0.0.1:{port}/");
     }
 
     private static string OutputRoot()

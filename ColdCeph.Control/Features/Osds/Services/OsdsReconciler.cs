@@ -44,15 +44,21 @@ public sealed class OsdsReconciler : BackgroundService
     private void ReconcileBody()
     {
         var state = _plane.GetState().State;
-        var host = _hosts.ListHosts().FirstOrDefault();
-        if (host is null)
-            return;
-
         var operationId = _plane.GetState().ActiveOperationId ?? OperationIdRules.Create().Value;
-        _osds.RefreshFromNode(host.Endpoint);
-        if (state == StoragePlaneState.Waking)
-            _osds.StartAll(host.Endpoint, operationId);
-        if (state == StoragePlaneState.Sleeping)
-            _osds.StopAll(host.Endpoint, operationId);
+        foreach (var host in _hosts.ListHosts())
+        {
+            try
+            {
+                _osds.RefreshFromNode(host.HostId, host.Endpoint);
+                if (state == StoragePlaneState.Waking)
+                    _osds.StartAll(host.HostId, host.Endpoint, operationId);
+                if (state == StoragePlaneState.Sleeping)
+                    _osds.StopAll(host.HostId, host.Endpoint, operationId);
+            }
+            catch (Exception)
+            {
+                // One down node must not skip the others.
+            }
+        }
     }
 }

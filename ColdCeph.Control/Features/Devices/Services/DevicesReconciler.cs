@@ -51,15 +51,21 @@ public sealed class DevicesReconciler : BackgroundService
     private void ReconcileBody()
     {
         var state = _plane.GetState().State;
-        var host = _hosts.ListHosts().FirstOrDefault();
-        if (host is null)
-            return;
-
         var operationId = _plane.GetState().ActiveOperationId ?? OperationIdRules.Create().Value;
-        _devices.RefreshFromNode(host.Endpoint);
-        if (state == StoragePlaneState.Waking)
-            _devices.WakeAll(host.Endpoint, operationId);
-        if (state == StoragePlaneState.Sleeping && _osds.IsEveryProcessStopped())
-            _devices.StandbyAll(host.Endpoint, operationId);
+        foreach (var host in _hosts.ListHosts())
+        {
+            try
+            {
+                _devices.RefreshFromNode(host.HostId, host.Endpoint);
+                if (state == StoragePlaneState.Waking)
+                    _devices.WakeAll(host.HostId, host.Endpoint, operationId);
+                if (state == StoragePlaneState.Sleeping && _osds.IsEveryProcessStopped())
+                    _devices.StandbyAll(host.HostId, host.Endpoint, operationId);
+            }
+            catch (Exception)
+            {
+                // One down node must not skip the others.
+            }
+        }
     }
 }

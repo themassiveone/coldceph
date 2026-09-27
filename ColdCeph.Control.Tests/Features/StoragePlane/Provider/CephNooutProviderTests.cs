@@ -19,6 +19,27 @@ public sealed class CephNooutProviderTests
     }
 
     [Test]
+    public void SetGroupNoout_docker_execs_ceph_in_the_configured_container()
+    {
+        var runner = new RecordingProcessRunner();
+        var provider = new CephNooutProvider(new ControlConfig { CephContainer = "abc123" }, runner);
+
+        provider.SetGroupNoout("hdd-osds");
+
+        Assert.That(runner.Commands, Is.EqualTo(new[] { "docker exec abc123 ceph osd set-group noout hdd-osds" }));
+    }
+
+    [Test]
+    public void Provider_does_not_start_a_relative_script()
+    {
+        var runner = new RecordingProcessRunner();
+        var provider = new CephNooutProvider(new ControlConfig { CephBinary = "docker/ceph/ceph" }, runner);
+
+        Assert.That(() => provider.SetGroupNoout("hdd-osds"), Throws.InvalidOperationException);
+        Assert.That(runner.Commands, Is.Empty);
+    }
+
+    [Test]
     public void Provider_does_not_emit_out_or_destroy_verbs()
     {
         var runner = new RecordingProcessRunner();

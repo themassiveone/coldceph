@@ -40,6 +40,27 @@ public sealed class CephCliQueryProviderTests
     }
 
     [Test]
+    public void Health_detail_docker_execs_ceph_in_the_configured_container()
+    {
+        var runner = new RecordingProcessRunner { Output = """{"status":"HEALTH_OK","checks":{}}""" };
+        var provider = new CephCliQueryProvider(new ControlConfig { CephContainer = "abc123" }, runner);
+
+        _ = provider.GetHealthDetail();
+
+        Assert.That(runner.Commands, Is.EqualTo(new[] { "docker exec abc123 ceph --format json health detail" }));
+    }
+
+    [Test]
+    public void Health_detail_does_not_start_a_relative_script()
+    {
+        var runner = new RecordingProcessRunner { Output = """{"status":"HEALTH_OK","checks":{}}""" };
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "docker/ceph/ceph" }, runner);
+
+        Assert.That(() => provider.GetHealthDetail(), Throws.InvalidOperationException);
+        Assert.That(runner.Commands, Is.Empty);
+    }
+
+    [Test]
     public void Health_detail_does_not_pass_conf_flags_when_unset()
     {
         var runner = new RecordingProcessRunner { Output = """{"status":"HEALTH_OK","checks":{}}""" };

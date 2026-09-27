@@ -12,6 +12,7 @@ public sealed class DebugArgParserTests
 
         Assert.That(command.Verb, Is.EqualTo("screenshot"));
         Assert.That(command.PagePath, Is.EqualTo("/hosts"));
+        Assert.That(command.RebuildImages, Is.False);
     }
 
     [Test]
@@ -24,9 +25,60 @@ public sealed class DebugArgParserTests
     }
 
     [Test]
+    public void Parses_compose_up_without_rebuilding_images()
+    {
+        var command = new DebugArgParser().Parse(["up"]);
+
+        Assert.That(command.Verb, Is.EqualTo("up"));
+        Assert.That(command.PagePath, Is.Null);
+        Assert.That(command.RebuildImages, Is.False);
+    }
+
+    [Test]
+    public void Parses_compose_up_with_rebuild()
+    {
+        var command = new DebugArgParser().Parse(["up", "--build"]);
+
+        Assert.That(command.Verb, Is.EqualTo("up"));
+        Assert.That(command.RebuildImages, Is.True);
+    }
+
+    [Test]
+    public void Parses_down_and_status()
+    {
+        Assert.That(new DebugArgParser().Parse(["down"]).Verb, Is.EqualTo("down"));
+        Assert.That(new DebugArgParser().Parse(["status"]).Verb, Is.EqualTo("status"));
+    }
+
+    [Test]
+    public void Parses_allow_all_pending_and_one_host()
+    {
+        var all = new DebugArgParser().Parse(["allow"]);
+        var one = new DebugArgParser().Parse(["allow", "node-a"]);
+
+        Assert.That(all.Verb, Is.EqualTo("allow"));
+        Assert.That(all.HostId, Is.Null);
+        Assert.That(one.HostId, Is.EqualTo("node-a"));
+    }
+
+    [Test]
+    public void Rejects_allow_with_extra_arguments()
+    {
+        Assert.That(() => new DebugArgParser().Parse(["allow", "node-a", "node-b"]), Throws.ArgumentException);
+    }
+
+    [Test]
     public void Rejects_unknown_verbs()
     {
-        Assert.That(() => new DebugArgParser().Parse(["up"]), Throws.ArgumentException);
+        Assert.That(() => new DebugArgParser().Parse(["launch"]), Throws.ArgumentException);
         Assert.That(() => new DebugArgParser().Parse(["screenshot", "/hosts", "/osds"]), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void Rejects_up_arguments_other_than_build()
+    {
+        Assert.That(() => new DebugArgParser().Parse(["up", "--no-deps"]), Throws.ArgumentException);
+        Assert.That(() => new DebugArgParser().Parse(["up", "cc-a"]), Throws.ArgumentException);
+        Assert.That(() => new DebugArgParser().Parse(["down", "--build"]), Throws.ArgumentException);
     }
 }

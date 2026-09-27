@@ -10,7 +10,7 @@ public sealed class ColdCephScenario : XceptoScenario
     public Uri ControlAddress => SharedEnvironment.ControlAddress;
     public Uri S3Address => SharedEnvironment.S3Address;
     public Uri NodeAddress => SharedEnvironment.NodeAddress;
-    public string CephBinary => SharedEnvironment.CephBinary;
+    public string CephContainer => SharedEnvironment.CephContainer;
     public string RepositoryRoot => SharedEnvironment.RepositoryRoot;
     public string OperatorPassword => SharedEnvironment.OperatorPassword;
     public string NodeToken => SharedEnvironment.NodeToken;

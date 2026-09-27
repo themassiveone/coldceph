@@ -12,7 +12,10 @@ namespace ColdCeph.Node.Tests.Fake;
 public sealed class FakeOsdRuntime : IOsdRuntime
 {
     public HashSet<int> Running { get; } = [];
+    public HashSet<int> Listed { get; } = [];
     public List<string> Commands { get; } = [];
+
+    public IReadOnlyList<int> ListIds() => Listed.ToArray();
 
     public bool IsRunning(int osdId) => Running.Contains(osdId);
 

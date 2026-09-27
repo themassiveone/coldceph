@@ -9,19 +9,19 @@ namespace ColdCeph.E2E.Tests.E2E;
 public sealed class CephClusterTests
 {
     [Test]
-    public async Task Cluster_exposes_mon_health_and_osds()
+    public async Task Control_ceph_cli_runs_against_the_cluster()
     {
         var scenario = new ColdCephScenario();
         await XceptoTest.Given(scenario, SharedTimeout.Timeout, builder =>
         {
             var ceph = builder.CephAdapterBuilder()
-                .WithBinary(scenario.CephBinary)
-                .WithWorkingDirectory(scenario.RepositoryRoot)
+                .WithContainer(scenario.CephContainer)
                 .Build();
 
             ceph.SeeQuorum();
             ceph.SeeHealthNotSilent();
-            ceph.SeeOsdMap();
+            ceph.SeePgStat();
+            ceph.SeeScopedNooutRoundTrip();
         });
     }
 }

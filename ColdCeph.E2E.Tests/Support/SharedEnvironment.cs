@@ -33,12 +33,12 @@ public sealed class SharedEnvironment
     public static Uri NodeAddress { get; } = new($"http://127.0.0.1:{NodePort}");
     public static Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
     public static string RepositoryRoot { get; private set; } = "";
-    public static string CephBinary { get; private set; } = "ceph";
+    public static string CephContainer { get; private set; } = "";
 
     public static async Task StartAsync(CephCluster ceph)
     {
         RepositoryRoot = FindRepositoryRoot();
-        CephBinary = ceph.CephBinary;
+        CephContainer = ceph.ContainerId;
         RgwAddress = ceph.RgwAddress;
         _node = await StartNodeAsync();
         _control = await StartControlAsync();
@@ -114,7 +114,8 @@ public sealed class SharedEnvironment
             DataDirectory = data,
             OperatorPassword = OperatorPassword,
             NodeToken = NodeToken,
-            CephBinary = CephBinary,
+            CephBinary = "ceph",
+            CephContainer = CephContainer,
             ConfiguredNodeEndpoints = [NodeAddress],
             ConfiguredNodeHostId = HostId,
             S3Mode = S3AdmissionMode.Retry,

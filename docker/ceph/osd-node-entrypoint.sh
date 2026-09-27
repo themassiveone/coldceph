@@ -61,5 +61,25 @@ OSD_DIR="$(find /var/lib/ceph/osd -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 OSD_ID="$(cat "${OSD_DIR}/whoami")"
 LOOP="$(losetup -j "${IMG}" | cut -d: -f1)"
 chown -R ceph:ceph "${OSD_DIR}" ${LOOP:+"${LOOP}"} || true
-echo "${HOST}: starting osd.${OSD_ID}"
-exec ceph-osd -f --cluster ceph --id "${OSD_ID}" --setuser ceph --setgroup ceph
+mkdir -p /var/run/ceph
+printf 'running\n' > /var/run/ceph/osd.wanted
+echo "${HOST}: supervising osd.${OSD_ID}"
+osd_pid=""
+while true; do
+  wanted="$(tr -d '[:space:]' < /var/run/ceph/osd.wanted 2>/dev/null || echo running)"
+  if [[ "${wanted}" != "running" ]]; then
+    if [[ -n "${osd_pid}" ]] && kill -0 "${osd_pid}" 2>/dev/null; then
+      kill "${osd_pid}" 2>/dev/null || true
+      wait "${osd_pid}" 2>/dev/null || true
+      osd_pid=""
+    fi
+    sleep 1
+    continue
+  fi
+  if [[ -z "${osd_pid}" ]] || ! kill -0 "${osd_pid}" 2>/dev/null; then
+    ceph-osd -f --cluster ceph --id "${OSD_ID}" --setuser ceph --setgroup ceph &
+    osd_pid=$!
+  fi
+  wait "${osd_pid}" || true
+  osd_pid=""
+done

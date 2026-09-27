@@ -46,25 +46,27 @@ State lives on a local SSD path (`/var/lib/coldceph`), never on the HDDs being p
 
 This repo ships a **multi-host** Ceph: one container per node (`mon`, `mgr`, three storage
 nodes, `rgw`). Each storage node (`node-a` / `node-b` / `node-c`) runs one BlueStore OSD on a
-tiny ramdisk. Start that, then run Control and Node from the IDE.
+tiny ramdisk. Bring that stack up with `cc-debug`, which also starts Control if `/health` is not
+already ready.
 
 Defaults are baked in. Copy `.env.example` only if you want to change them.
 
 ```bash
 cp .env.example .env          # optional
-docker compose up -d --wait
+./cc-debug up
 docker/ceph/ceph osd tree     # three hosts, one OSD each
 ```
 
 First boot takes a couple of minutes (OSD prepare + peering with size 3). The cluster is
-ephemeral: no named volumes, Ceph state is tmpfs. `docker compose down` wipes it;
-`docker compose up` bootstraps a new cluster. Compose pins `MON_IP` (`172.28.90.10`). Ready is
+ephemeral: no named volumes, Ceph state is tmpfs. `./cc-debug down` wipes it;
+`./cc-debug up` bootstraps a new cluster. Compose pins `MON_IP` (`172.28.90.10`). Ready is
 `ceph -s` healthy, three OSDs up, and RGW on host 7481.
 
-Then start **ColdCeph.Control**, then **ColdCeph.Node**. Control does not need a Node. The Node
-asks to join; open **Hosts** and click **Allow**. Open **http://127.0.0.1:8080** or
-**http://localhost:8080** — unauthenticated visits go to `/auth/login` (password `changeme`).
-`/health` is anonymous JSON if you want a bind check without the UI.
+`./cc-debug up` already starts three ColdCeph.Node processes (`cc-a` / `cc-b` / `cc-c`) and
+Control if it is not already serving `/health`. Open **Hosts** and **Allow** `node-a`, `node-b`,
+and `node-c`. Open **http://127.0.0.1:8080** or **http://localhost:8080** — unauthenticated
+visits go to `/auth/login` (password `changeme`). `/health` is anonymous JSON if you want a bind
+check without the UI.
 
 | What | Default | Override |
 |------|---------|----------|
@@ -75,11 +77,11 @@ asks to join; open **Hosts** and click **Allow**. Open **http://127.0.0.1:8080**
 | S3 access key | `coldceph` | `CEPH_DEMO_ACCESS_KEY` |
 | S3 secret key | `coldcephsecret` | `CEPH_DEMO_SECRET_KEY` |
 | Demo user / bucket | `coldceph` / `cold` | `CEPH_DEMO_UID` / `CEPH_DEMO_BUCKET` |
-| Node | http://127.0.0.1:7080 | `NODE_PORT` / `COLDCEPH_ADVERTISE_URL` |
-| Node joins Control at | http://127.0.0.1:8080 | `COLDCEPH_CONTROL_ENDPOINT` |
+| Node a / b / c | http://127.0.0.1:7081–7083 | `NODE_A_HOST_PORT` / `NODE_B_HOST_PORT` / `NODE_C_HOST_PORT` |
+| Node joins Control at | http://127.0.0.1:8080 | `COLDCEPH_CONTROL_ENDPOINT` / `WEB_PORT` |
 | Node token (Control→Node only) | `changeme` | `COLDCEPH_NODE_TOKEN` |
-| Node host id | `dev` | `COLDCEPH_HOST_ID` / `COLDCEPH_NODE_HOST_ID` |
-| Ceph CLI | `docker/ceph/ceph` | `COLDCEPH_CEPH_BINARY` |
+| Node host ids | `node-a` / `node-b` / `node-c` | `COLDCEPH_HOST_ID` |
+| Control Ceph CLI | `docker exec coldceph-mon ceph` | `COLDCEPH_CEPH_CONTAINER` |
 | Ceph image | `quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8` | `CEPH_IMAGE` |
 
 Path-style S3 through ColdCeph (once the plane is READY):
@@ -89,10 +91,15 @@ aws --endpoint-url http://127.0.0.1:7480 s3 ls \
   --access-key coldceph --secret-key coldcephsecret
 ```
 
-The compose OSDs live inside the three storage containers. A ColdCeph.Node you launch from the
-IDE does not systemd-manage those OSDs; it is still the node endpoint Control enrolls on `/hosts`.
+Compose also starts three ColdCeph.Node processes (`cc-a` / `cc-b` / `cc-c`) that docker-exec
+into the matching OSD containers. They use host networking so join requests reach Control on
+`127.0.0.1` (Linux docker-bridge hairpin to the host is dropped). They compile into `/tmp` on a
+read-only source mount, so they do not write the host `obj`/`bin` trees. Prefer those over
+launching Node from the IDE. If you do use the `Node-a` / `Node-b` / `Node-c` launch profiles, do
+not also run the compose `cc-*` services on the same ports.
 
-Talk to Ceph without installing `ceph-common`:
+Talk to Ceph from a shell without installing `ceph-common` (this helper is not what Control
+runs):
 
 ```bash
 docker/ceph/ceph status --format json
@@ -114,14 +121,20 @@ E2E starts a Testcontainers Ceph demo once for the test project (HiveShard-style
 dotnet test coldceph.slnx --filter "FullyQualifiedName~ColdCeph.E2E.Tests"
 ```
 
-Inspect operator HTML without walking the UI. `./cc-debug` signs in and screenshots every
-operator page from a running Control (`WEB_PORT` / `COLDCEPH_OPERATOR_URL`):
+Local compose + operator HTML. Do not `docker compose up` or walk the UI by hand:
 
 ```bash
+./cc-debug up
+./cc-debug status
+./cc-debug allow
 ./cc-debug
 ./cc-debug screenshot /hosts
 ./cc-debug pages
+./cc-debug down
 ```
+
+`up --build` rebuilds the Node images. Screenshots write under `.git/coldceph/debug/` (`WEB_PORT` /
+`COLDCEPH_OPERATOR_URL`).
 
 CI runs both jobs. The E2E job does not start `compose.yaml`; Testcontainers owns the cluster.
 `compose.yaml` is only for local IDE getting-started against a long-lived multi-host cluster.

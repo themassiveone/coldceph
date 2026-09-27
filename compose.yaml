@@ -33,7 +33,46 @@ x-storage-node: &storage-node
     mon:
       condition: service_healthy
   healthcheck:
-    test: ["CMD-SHELL", "pgrep -x ceph-osd >/dev/null"]
+    test: ["CMD-SHELL", "test -s /etc/ceph/ceph.conf && grep -Eq 'running|stopped' /var/run/ceph/osd.wanted"]
+    interval: 5s
+    timeout: 5s
+    retries: 36
+    start_period: 180s
+  stop_grace_period: 10s
+
+x-cc-node: &cc-node
+  build:
+    context: .
+    dockerfile: docker/node/Dockerfile
+  working_dir: /src
+  command:
+    [
+      "dotnet",
+      "run",
+      "--no-launch-profile",
+      "--project",
+      "ColdCeph.Node",
+      "--property:BaseIntermediateOutputPath=/tmp/cc-obj/",
+      "--property:BaseOutputPath=/tmp/cc-bin/",
+    ]
+  init: true
+  network_mode: host
+  environment:
+    ASPNETCORE_ENVIRONMENT: Development
+    ASPNETCORE_HTTP_PORTS: ""
+    ASPNETCORE_HTTPS_PORTS: ""
+    COLDCEPH_NODE_TOKEN: ${COLDCEPH_NODE_TOKEN:-changeme}
+    COLDCEPH_CONTROL_ENDPOINT: ${COLDCEPH_CONTROL_ENDPOINT:-http://127.0.0.1:${WEB_PORT:-8080}}
+    COLDCEPH_NODE_DATA: /tmp/coldceph-node
+    DOTNET_CLI_HOME: /tmp/dotnet
+    NUGET_PACKAGES: /tmp/nuget
+  volumes:
+    - .:/src:ro
+    - /var/run/docker.sock:/var/run/docker.sock
+  tmpfs:
+    - /tmp:exec
+  healthcheck:
+    test: ["CMD-SHELL", "curl -sf http://127.0.0.1:$$NODE_PORT/health"]
     interval: 5s
     timeout: 5s
     retries: 36
@@ -166,6 +205,72 @@ services:
       retries: 36
       start_period: 90s
     stop_grace_period: 10s
+
+  cc-a:
+    <<: *cc-node
+    container_name: ${COLDCEPH_CC_A_CONTAINER:-coldceph-cc-a}
+    hostname: cc-a
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: ""
+      ASPNETCORE_HTTPS_PORTS: ""
+      NODE_PORT: "${NODE_A_HOST_PORT:-7081}"
+      COLDCEPH_NODE_TOKEN: ${COLDCEPH_NODE_TOKEN:-changeme}
+      COLDCEPH_HOST_ID: node-a
+      COLDCEPH_HOSTNAME: node-a
+      COLDCEPH_CONTROL_ENDPOINT: ${COLDCEPH_CONTROL_ENDPOINT:-http://127.0.0.1:${WEB_PORT:-8080}}
+      COLDCEPH_ADVERTISE_URL: http://127.0.0.1:${NODE_A_HOST_PORT:-7081}
+      COLDCEPH_OSD_CONTAINER: ${CEPH_NODE_A_CONTAINER:-coldceph-node-a}
+      COLDCEPH_NODE_DATA: /tmp/coldceph-node
+      DOTNET_CLI_HOME: /tmp/dotnet
+      NUGET_PACKAGES: /tmp/nuget
+    depends_on:
+      node-a:
+        condition: service_healthy
+
+  cc-b:
+    <<: *cc-node
+    container_name: ${COLDCEPH_CC_B_CONTAINER:-coldceph-cc-b}
+    hostname: cc-b
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: ""
+      ASPNETCORE_HTTPS_PORTS: ""
+      NODE_PORT: "${NODE_B_HOST_PORT:-7082}"
+      COLDCEPH_NODE_TOKEN: ${COLDCEPH_NODE_TOKEN:-changeme}
+      COLDCEPH_HOST_ID: node-b
+      COLDCEPH_HOSTNAME: node-b
+      COLDCEPH_CONTROL_ENDPOINT: ${COLDCEPH_CONTROL_ENDPOINT:-http://127.0.0.1:${WEB_PORT:-8080}}
+      COLDCEPH_ADVERTISE_URL: http://127.0.0.1:${NODE_B_HOST_PORT:-7082}
+      COLDCEPH_OSD_CONTAINER: ${CEPH_NODE_B_CONTAINER:-coldceph-node-b}
+      COLDCEPH_NODE_DATA: /tmp/coldceph-node
+      DOTNET_CLI_HOME: /tmp/dotnet
+      NUGET_PACKAGES: /tmp/nuget
+    depends_on:
+      node-b:
+        condition: service_healthy
+
+  cc-c:
+    <<: *cc-node
+    container_name: ${COLDCEPH_CC_C_CONTAINER:-coldceph-cc-c}
+    hostname: cc-c
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: ""
+      ASPNETCORE_HTTPS_PORTS: ""
+      NODE_PORT: "${NODE_C_HOST_PORT:-7083}"
+      COLDCEPH_NODE_TOKEN: ${COLDCEPH_NODE_TOKEN:-changeme}
+      COLDCEPH_HOST_ID: node-c
+      COLDCEPH_HOSTNAME: node-c
+      COLDCEPH_CONTROL_ENDPOINT: ${COLDCEPH_CONTROL_ENDPOINT:-http://127.0.0.1:${WEB_PORT:-8080}}
+      COLDCEPH_ADVERTISE_URL: http://127.0.0.1:${NODE_C_HOST_PORT:-7083}
+      COLDCEPH_OSD_CONTAINER: ${CEPH_NODE_C_CONTAINER:-coldceph-node-c}
+      COLDCEPH_NODE_DATA: /tmp/coldceph-node
+      DOTNET_CLI_HOME: /tmp/dotnet
+      NUGET_PACKAGES: /tmp/nuget
+    depends_on:
+      node-c:
+        condition: service_healthy
 
 networks:
   default:
