@@ -54,7 +54,17 @@ public sealed class S3Adapter : XceptoAdapter
         AddStep(new ExpectationStepState("S3 GET of a missing object returns RGW's 404", async () =>
         {
             var response = await Send(HttpMethod.Get, $"/{_bucket}/definitely-not-here");
-            return response.StatusCode == HttpStatusCode.NotFound;
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                return true;
+
+            // 503 is ColdCeph refusing admission and is worth retrying; anything else is RGW
+            // answering something unexpected, and the body says what.
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+                return false;
+
+            throw new InvalidOperationException(
+                $"Expected RGW's 404 for a missing object but the cold endpoint answered "
+                + $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         }));
     }
 
@@ -74,7 +84,11 @@ public sealed class S3Adapter : XceptoAdapter
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException(
                     $"PUT through the cold endpoint failed: {(int)response.StatusCode} "
-                    + $"{await response.Content.ReadAsStringAsync()}");
+                    + $"{await response.Content.ReadAsStringAsync()}"
+                    + (response.StatusCode == HttpStatusCode.ServiceUnavailable
+                        ? ". A 503 is ColdCeph refusing admission, not RGW: the confirmation was not "
+                          + "write-ready. SeeConfirmationAdmitsReadsAndWrites names the predicate."
+                        : string.Empty));
         }));
 
         AddStep(new ExpectationStepState($"S3 GET {_bucket}/{key} returns the same bytes", async () =>

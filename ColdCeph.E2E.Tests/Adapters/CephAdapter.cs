@@ -13,6 +13,7 @@ public sealed class CephAdapter : XceptoAdapter
 {
     private readonly CephCliQueryProvider _query;
     private readonly CephNooutProvider _noout;
+    private CephObservation? _observation;
 
     internal CephAdapter(ControlConfig config)
     {
@@ -21,17 +22,25 @@ public sealed class CephAdapter : XceptoAdapter
         _noout = new CephNooutProvider(config, runner);
     }
 
+    /// <summary>
+    /// One confirmation for the whole journey, which is also the semantics under test: a
+    /// confirmation is one pass over the monitor. Taking a fresh one per step meant four
+    /// <c>docker exec … ceph</c> invocations each, and the journey outran its budget before it
+    /// could assert anything.
+    /// </summary>
+    private CephObservation Observation => _observation ??= _query.GetObservation();
+
     public void SeeQuorum()
     {
         AddStep(new ExpectationStepState("Control reads a named Ceph quorum", () =>
-            Task.FromResult(_query.GetObservation().QuorumAvailable)));
+            Task.FromResult(Observation.QuorumAvailable)));
     }
 
     public void SeeHealthNotSilent()
     {
         AddStep(new ExpectationStepState("Control ceph health detail reports HEALTH_*", () =>
         {
-            var health = _query.GetObservation().Health;
+            var health = Observation.Health;
             return Task.FromResult(
                 health.Status.StartsWith("HEALTH_", StringComparison.Ordinal)
                 && !string.Equals(health.Status, "UNAVAILABLE", StringComparison.Ordinal));
@@ -53,7 +62,7 @@ public sealed class CephAdapter : XceptoAdapter
     {
         AddStep(new ExpectationStepState("Control parses Ceph PG states", () =>
         {
-            var states = _query.GetObservation().PgStates;
+            var states = Observation.PgStates;
             return Task.FromResult(
                 states.Count > 0
                 && states.All(state => state.Count > 0 && state.Tokens.Any()));
@@ -69,7 +78,7 @@ public sealed class CephAdapter : XceptoAdapter
     {
         AddStep(new ExpectationStepState("Live Ceph output parses to the shape the fixtures model", () =>
         {
-            var observation = _query.GetObservation();
+            var observation = Observation;
             var namesLookRight = observation.HealthChecks.All(check =>
                 check.Name.Length > 0
                 && check.Name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character) || character == '_'));

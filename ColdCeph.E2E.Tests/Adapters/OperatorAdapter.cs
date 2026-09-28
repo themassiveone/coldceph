@@ -190,6 +190,8 @@ public sealed class OperatorAdapter : XceptoAdapter
         AddStep(new ExpectationStepState("live Ceph health classifies as expected", async () =>
         {
             var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
             var unexpected = UnexpectedChecks(snapshot);
             if (unexpected.Count > 0)
                 throw new InvalidOperationException(
@@ -210,6 +212,8 @@ public sealed class OperatorAdapter : XceptoAdapter
         AddStep(new ExpectationStepState("live Ceph health is not a durability failure", async () =>
         {
             var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
             return snapshot.Contains("\"durabilityFailure\":false", StringComparison.OrdinalIgnoreCase)
                    || snapshot.Contains("\"durabilityFailure\": false", StringComparison.OrdinalIgnoreCase);
         }));
@@ -226,12 +230,17 @@ public sealed class OperatorAdapter : XceptoAdapter
         AddStep(new ExpectationStepState("controller-owned noout classifies as expected", async () =>
         {
             var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
+
+            // Ceph raises the flags check on the next mgr tick, so its absence is a retry rather
+            // than a verdict. If it never appears the step times out naming itself, which says the
+            // scoped noout covered nothing.
             var flags = snapshot.Contains("OSD_FLAGS", StringComparison.Ordinal)
                         || snapshot.Contains("OSDMAP_FLAGS", StringComparison.Ordinal);
             if (!flags)
-                throw new InvalidOperationException(
-                    "Ceph reported no flags check after sleep, so the scoped noout covered nothing. "
-                    + "The CRUSH bucket StoragePlane scopes to has to contain the OSD.");
+                return false;
+
             var unexpected = UnexpectedChecks(snapshot);
             if (unexpected.Count > 0)
                 throw new InvalidOperationException(
@@ -271,6 +280,48 @@ public sealed class OperatorAdapter : XceptoAdapter
                             || body.Contains("\"in\": true", StringComparison.OrdinalIgnoreCase);
             return up && inCluster;
         }));
+    }
+
+    /// <summary>
+    /// Asserts the live confirmation actually admits reads and writes, and says which predicate
+    /// refused if not.
+    /// <para>
+    /// S3 answers 503 for every reason there is — not READY, not read-ready, not write-ready — so a
+    /// refused GET or PUT on its own tells you nothing. This turns that into the predicate and the
+    /// checks behind it.
+    /// </para>
+    /// </summary>
+    public void SeeConfirmationAdmitsReadsAndWrites()
+    {
+        AddStep(new ExpectationStepState("the live confirmation admits reads and writes", async () =>
+        {
+            var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
+
+            var readReady = Flag(snapshot, "readReady");
+            var writeReady = Flag(snapshot, "writeReady");
+            if (readReady == true && writeReady == true)
+                return true;
+
+            throw new InvalidOperationException(
+                $"The cluster is READY but the confirmation does not admit "
+                + $"{(readReady == true ? string.Empty : "reads")}"
+                + $"{(readReady != true && writeReady != true ? " or " : string.Empty)}"
+                + $"{(writeReady == true ? string.Empty : "writes")}, so S3 answers 503. "
+                + $"Unexpected checks: {Describe(UnexpectedChecks(snapshot))}. "
+                + $"Predicates and checks: {snapshot}");
+        }));
+    }
+
+    private static string Describe(IReadOnlyList<string> names)
+        => names.Count == 0 ? "(none)" : string.Join(", ", names);
+
+    /// <summary>Reads a boolean out of the integrity document, or null when it is not there.</summary>
+    private static bool? Flag(string json, string name)
+    {
+        var match = Regex.Match(json, $"\"{name}\"\\s*:\\s*(?<value>true|false)");
+        return match.Success ? match.Groups["value"].Value == "true" : null;
     }
 
     public void Wake()
@@ -321,16 +372,19 @@ public sealed class OperatorAdapter : XceptoAdapter
     /// <c>/v1</c>. That is the same confirmation the operator triggers, so what is asserted is what
     /// the appliance concluded, not a separate reading taken beside it.
     /// </summary>
-    private async Task<string> ConfirmIntegrityAsync()
+    /// <summary>
+    /// Returns null when the confirmation has not landed yet — an unreachable monitor on the first
+    /// tick is a retry, not a verdict. Only a classification ColdCeph got wrong throws, so a
+    /// transient does not abort the journey before Xcepto can retry it.
+    /// </summary>
+    private async Task<string?> ConfirmIntegrityAsync()
     {
         await PostFormAsync("/integrity/check", await GetAntiforgeryHtmlAsync());
         var response = await _client.GetAsync(new Uri(_baseUrl, "/v1/cluster/integrity"));
         var body = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"/v1/cluster/integrity failed: {(int)response.StatusCode}");
-        if (body.Contains("\"status\":\"UNAVAILABLE\"", StringComparison.Ordinal))
-            throw new InvalidOperationException("Control could not reach the Ceph monitor.");
-        return body;
+        return body.Contains("\"status\":\"UNAVAILABLE\"", StringComparison.Ordinal) ? null : body;
     }
 
     /// <summary>

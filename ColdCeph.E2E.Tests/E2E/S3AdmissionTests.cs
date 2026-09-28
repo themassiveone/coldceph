@@ -36,7 +36,7 @@ public sealed class S3AdmissionTests
     public async Task Get_after_wake_reaches_rgw()
     {
         var scenario = new ColdCephScenario();
-        await XceptoTest.Given(scenario, SharedTimeout.Timeout, builder =>
+        await XceptoTest.Given(scenario, SharedTimeout.LongTimeout, builder =>
         {
             var op = builder.OperatorAdapterBuilder()
                 .WithBaseUrl(scenario.ControlAddress)
@@ -48,6 +48,7 @@ public sealed class S3AdmissionTests
 
             op.EnsureReady(scenario.OperatorPassword);
             op.SeeStoragePlane("Ready");
+            op.SeeConfirmationAdmitsReadsAndWrites();
             s3.SeeMissingObjectIsNotFound();
         });
     }
@@ -71,6 +72,7 @@ public sealed class S3AdmissionTests
                 .Build();
 
             op.EnsureReady(scenario.OperatorPassword);
+            op.SeeConfirmationAdmitsReadsAndWrites();
             s3.SeeObjectRoundTrip();
             s3.SeeBucketListing();
         });
