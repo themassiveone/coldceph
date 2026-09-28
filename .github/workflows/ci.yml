@@ -61,10 +61,14 @@ jobs:
         run: >-
           dotnet test coldceph.slnx --configuration Release
           --filter "FullyQualifiedName!~ColdCeph.E2E.Tests"
-          --logger "trx;LogFileName=unit.trx"
+          --logger trx
           --results-directory artifacts/test-results
           --collect "XPlat Code Coverage"
           -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+
+      - name: Summarise unit failures
+        if: failure()
+        run: node .github/scripts/trx-failures.js artifacts/test-results
 
       - name: Coverage summary
         if: always()
@@ -96,9 +100,15 @@ jobs:
         run: >-
           dotnet test coldceph.slnx --configuration Release
           --filter "FullyQualifiedName~ColdCeph.E2E.Tests"
-          --logger "trx;LogFileName=e2e.trx"
+          --logger trx
           --results-directory artifacts/e2e-results
           --blame-hang --blame-hang-timeout 10m
+
+      # Repeat the failure messages at the end of the log. They otherwise sit in the middle of a
+      # long log, which is awkward to page back into.
+      - name: Summarise E2E failures
+        if: failure()
+        run: node .github/scripts/trx-failures.js artifacts/e2e-results
 
       # An E2E failure is almost always about what the Ceph container was doing, so capture it.
       - name: Capture Ceph container state
