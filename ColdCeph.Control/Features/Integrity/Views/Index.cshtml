@@ -1,70 +1,69 @@
 @using ColdCeph.Core.Features.Integrity.DTOs
 @model IntegritySnapshot
 @{
-    ViewData["Title"] = "Integrity";
+    ViewData["Title"] = "Data protection";
 }
-<p class="cc-page-kicker">Integrity</p>
-<h1>Is the data known safe?</h1>
-<p class="cc-lead">ColdCeph conclusions stay separate from Ceph's own health. Cold <span class="cc-mono">HEALTH_ERR</span> is expected while disks sleep.</p>
+<p class="cc-page-kicker">Data protection</p>
+<h1>@(Model.Predicates.WriteReady ? "Data is protected" : Model.Raw.Status == "UNAVAILABLE" ? "Protection could not be checked" : "Storage needs review")</h1>
+<p class="cc-lead">This is a live check of the storage cluster. Technical Ceph details remain available below.</p>
 
 <div class="cc-grid">
     <section class="cc-card">
-        <h2>Cold-storage</h2>
+        <h2>What you can do</h2>
         <dl class="cc-dl">
-            <dt>Write ready</dt>
-            <dd>@(Model.Predicates.WriteReady ? "yes" : "no")</dd>
-            <dt>Sleep safe</dt>
-            <dd>@(Model.Predicates.SleepSafe ? "yes" : "no")</dd>
-            <dt>Last verified clean</dt>
+            <dt>Back up data</dt>
+            <dd>@(Model.Predicates.WriteReady ? "Available" : "Blocked")</dd>
+            <dt>Put disks to sleep</dt>
+            <dd>@(Model.Predicates.SleepSafe ? "Safe" : "Not safe yet")</dd>
+            <dt>Last protected</dt>
             <dd>@(Model.LastVerifiedCleanAt?.ToString("u") ?? "never")</dd>
-            <dt>Summary</dt>
-            <dd>@(Model.LastVerifiedCleanSummary ?? "none")</dd>
         </dl>
     </section>
     <section class="cc-card">
-        <h2>Ceph health</h2>
-        <p>Raw Ceph health: <strong>@Model.Raw.Status</strong></p>
-        <p>@Model.Raw.Summary</p>
-        @if (Model.Raw.Checks.Count > 0)
+        <h2>Capacity</h2>
+        @if (Model.Capacity is { } capacity)
         {
-            <ul class="cc-checks">
-                @foreach (var check in Model.Raw.Checks)
-                {
-                    <li>@check</li>
-                }
-            </ul>
+            <dl class="cc-dl">
+                <dt>Total</dt><dd>@FormatBytes(capacity.TotalBytes)</dd>
+                <dt>Used</dt><dd>@FormatBytes(capacity.UsedBytes)</dd>
+                <dt>Available</dt><dd>@FormatBytes(capacity.AvailableBytes)</dd>
+                <dt>Checked</dt><dd>@Model.ObservedAt.ToString("u")</dd>
+            </dl>
+        }
+        else
+        {
+            <p>Capacity could not be read during this check.</p>
         }
     </section>
 </div>
 
-<section class="cc-card">
-    <h2>Classified checks</h2>
-    @if (Model.Checks.Count == 0)
-    {
-        <p class="cc-empty">No classified checks in this snapshot.</p>
-    }
-    else
+<details class="cc-card cc-details">
+    <summary>Advanced Ceph details — @Model.Raw.Status</summary>
+    <p>Raw Ceph health: <strong>@Model.Raw.Status</strong></p>
+    <p>@Model.Raw.Summary</p>
+    @if (Model.Checks.Count > 0)
     {
         <div class="cc-table-wrap">
             <table class="cc-table">
-                <thead>
-                    <tr>
-                        <th>Check</th>
-                        <th>Class</th>
-                        <th>Detail</th>
-                    </tr>
-                </thead>
+                <thead><tr><th>Check</th><th>Meaning</th><th>Ceph detail</th></tr></thead>
                 <tbody>
                 @foreach (var check in Model.Checks)
                 {
-                    <tr>
-                        <td>@check.Name</td>
-                        <td>@check.Classification</td>
-                        <td>@check.Detail</td>
-                    </tr>
+                    <tr><td>@check.Name</td><td>@check.Classification</td><td>@check.Detail</td></tr>
                 }
                 </tbody>
             </table>
         </div>
     }
-</section>
+</details>
+
+@functions {
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB", "PB"];
+        var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1000 && unit < units.Length - 1) { value /= 1000; unit++; }
+        return $"{value:0.#} {units[unit]}";
+    }
+}

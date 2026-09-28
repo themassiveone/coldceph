@@ -2593,6 +2593,22 @@ This matters because the controller deliberately performs operations that make C
 
 # 49. Operator UX Principles
 
+The default UI is an appliance experience for people who need not know Ceph. The StoragePlane-owned
+Overview composes read-only controller queries across the existing slices; it is not a separate
+Dashboard slice and owns no sibling writes. It presents, in order, required action, backup-client
+availability, last verified protection, confirmed capacity, and machine/disk readiness. Loading it
+uses cached Integrity and Node-pushed inventory and never invokes Ceph.
+
+Primary navigation and copy use operator tasks and plain storage language. Raw Ceph health, OSD
+terms, device identifiers, and transition journal fields remain available through advanced details.
+An expected cold `HEALTH_ERR` is not placed in global chrome without classification. Unknown facts
+are labeled “not checked,” observed facts carry their time, and no unknown or historical value is
+presented as current health.
+
+Before inventory is ready, Overview is a setup checklist for connected machines, approvals, disks
+and storage services, and the first protection check. Wake is not offered until at least one live
+enrolled host has supplied disk and OSD inventory.
+
 The UI should answer:
 
 ```text

@@ -11,10 +11,11 @@ public sealed class IntegrityPagesHttpTests
 
         var html = await client.GetStringAsync("/integrity");
 
-        Assert.That(html, Does.Contain("Cold-storage"));
+        Assert.That(html, Does.Contain("Data protection"));
         Assert.That(html, Does.Contain("Raw Ceph health:"));
         Assert.That(html, Does.Not.Contain("http-equiv=\"refresh\""));
         Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(1));
+        Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(1));
         Assert.That(factory.Ceph.HealthDetailCalls, Is.Not.EqualTo(0));
     }
 
@@ -26,9 +27,22 @@ public sealed class IntegrityPagesHttpTests
 
         var html = await client.GetStringAsync("/integrity");
 
-        Assert.That(html, Does.Contain("Write ready"));
-        Assert.That(html, Does.Contain("Ceph health"));
-        Assert.That(html, Does.Not.Contain("Wake disks"));
+        Assert.That(html, Does.Contain("Back up data"));
+        Assert.That(html, Does.Contain("Advanced Ceph details"));
+        Assert.That(html, Does.Not.Contain("Wake storage"));
+    }
+
+    [Test]
+    public async Task Integrity_page_shows_capacity_from_its_live_confirmation()
+    {
+        using var factory = new Support.ControlAppFactory();
+        using var client = await Support.OperatorClient.SignedIn(factory);
+
+        var html = await client.GetStringAsync("/integrity");
+
+        Assert.That(html, Does.Contain("3 GB"));
+        Assert.That(html, Does.Contain("1 GB"));
+        Assert.That(html, Does.Contain("2 GB"));
     }
 
     [Test]

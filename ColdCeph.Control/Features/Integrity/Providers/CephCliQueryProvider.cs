@@ -42,6 +42,21 @@ public sealed class CephCliQueryProvider : ICephQueryProvider
         };
     }
 
+    public ClusterCapacityDto GetCapacity()
+    {
+        var json = Run("status");
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+        if (!document.RootElement.TryGetProperty("pgmap", out var pgmap))
+            throw new InvalidOperationException("Ceph status did not include capacity information.");
+
+        return new ClusterCapacityDto
+        {
+            TotalBytes = ReadNonNegativeInt64(pgmap, "bytes_total"),
+            UsedBytes = ReadNonNegativeInt64(pgmap, "bytes_used"),
+            AvailableBytes = ReadNonNegativeInt64(pgmap, "bytes_avail")
+        };
+    }
+
     public bool GetQuorumAvailable()
     {
         var json = Run("quorum_status");
@@ -122,6 +137,15 @@ public sealed class CephCliQueryProvider : ICephQueryProvider
                 : check.Value.ToString();
             return $"{check.Name}: {message}";
         }).ToArray();
+    }
+
+    private static long ReadNonNegativeInt64(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value)
+            || !value.TryGetInt64(out var parsed)
+            || parsed < 0)
+            throw new InvalidOperationException($"Ceph status returned invalid {name} capacity.");
+        return parsed;
     }
 
     private string Run(params string[] command)

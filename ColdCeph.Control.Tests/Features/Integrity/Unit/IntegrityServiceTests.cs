@@ -245,6 +245,36 @@ public sealed class IntegrityServiceTests
     }
 
     [Test]
+    public void GetIntegrity_includes_capacity_from_the_same_confirmation()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.Capacity = new ClusterCapacityDto
+        {
+            TotalBytes = 3000,
+            UsedBytes = 1000,
+            AvailableBytes = 2000
+        };
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Capacity?.TotalBytes, Is.EqualTo(3000));
+        Assert.That(snapshot.CapacityUnavailableReason, Is.Null);
+    }
+
+    [Test]
+    public void Capacity_failure_does_not_hide_a_successful_integrity_confirmation()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.ThrowOnCapacity = true;
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_OK"));
+        Assert.That(snapshot.Capacity, Is.Null);
+        Assert.That(snapshot.CapacityUnavailableReason, Is.EqualTo("capacity unavailable"));
+    }
+
+    [Test]
     public void GetLastIntegrity_does_not_query_ceph()
     {
         var (integrity, ceph, _) = Create();

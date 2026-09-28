@@ -1,16 +1,16 @@
 @model ColdCeph.Control.Features.Hosts.ViewModels.HostsPageViewModel
 @{
-    ViewData["Title"] = "Hosts";
+    ViewData["Title"] = "Storage";
 }
-<p class="cc-page-kicker">Hosts</p>
-<h1>Machines</h1>
-<p class="cc-lead">A Node asks to join. You allow it once. Deny blocks that machine until you allow it.</p>
+<p class="cc-page-kicker">Storage</p>
+<h1>Storage machines</h1>
+<p class="cc-lead">Approve machines you recognize and check that every enrolled machine is online.</p>
 
 <section class="cc-card">
     <h2>Waiting to join</h2>
     @if (Model.Pending.Count == 0)
     {
-        <p class="cc-empty">No join requests. Start a Node with <span class="cc-mono">COLDCEPH_CONTROL_ENDPOINT</span> pointed at this Control.</p>
+        <p class="cc-empty">No machines are waiting for approval.</p>
     }
     else
     {
@@ -53,7 +53,7 @@
     <h2>Enrolled</h2>
     @if (Model.Enrolled.Count == 0)
     {
-        <p class="cc-empty">No machines enrolled. Allowed Nodes show up here and stay alive by heartbeat.</p>
+        <p class="cc-empty">No storage machines are connected. Check that ColdCeph Node is running on each storage machine.</p>
     }
     else
     {

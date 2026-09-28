@@ -74,7 +74,7 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 |-------|---------------|-------------|-------------------|
 | **S3** | Can clients GET/PUT objects through the cold endpoint? | In-flight/queued requests, proxy sessions, wait vs 503 | Pending work, active count, last activity |
 | **StoragePlane** | Is the data plane COLD, WAKING, READY, …? Should it sleep? | Operational state, transition lease, idle policy, controller-owned `noout` records | State, readiness, lease holder |
-| **Integrity** | Is my data known safe? What does Ceph say vs expected-cold? | Last verified-clean snapshot, classified health checks, PG/pool durability view | Integrity DTO, raw Ceph health fields |
+| **Integrity** | Is my data known safe? What does Ceph say vs expected-cold? | Last verified-clean snapshot, classified health checks, confirmed cluster capacity, PG/pool durability view | Integrity DTO, raw Ceph health fields, last capacity reading |
 | **Osds** | Which OSDs exist, up/in, started/stopped? | Observed inventory from Nodes, start/stop commands to nodes | OSD inventory DTOs |
 | **Devices** | Which HDDs, identity, power state? | Observed inventory from Nodes, wake/standby commands to nodes | Device inventory DTOs |
 | **Hosts** | Which machines, node liveness? | Join requests, operator allow/deny, enrolled host liveness | Host DTOs, pending/blocked joins, node endpoints |
@@ -138,8 +138,17 @@ from `READY`).
 A Razor `ViewLocationExpander` keeps views under `Features/<Slice>/Views/`. Each slice Views
 folder includes `_ViewStart.cshtml` so Razor applies `_Layout` (it discovers ViewStart from the
 view path, not from `Shared/Views`). Layout chrome reads StoragePlane + Integrity controllers
-**only when the operator is authenticated**, so operational state and raw Ceph health stay
-distinct without making login invoke the Ceph CLI.
+**only when the operator is authenticated**. It shows the classified protection conclusion rather
+than an unexplained raw cold `HEALTH_ERR`; raw Ceph health remains on Integrity. Login and layout
+chrome never invoke the Ceph CLI.
+
+`/` is a StoragePlane-owned, read-only appliance Overview. It composes query methods from sibling
+controllers to show setup readiness, backup availability, last verified protection, the last
+confirmed capacity reading, and hardware totals. It uses Node-pushed inventory and Integrity’s
+cached snapshot; it must not cause an OSD overlay or Ceph command. Wake is not offered until at
+least one live enrolled host plus disk and OSD observations exist. Primary copy uses plain storage
+language; Ceph/state-machine identifiers live in advanced details. Unknown facts are explicitly
+dated and never presented as healthy.
 
 Wake from the UI is `POST` on **StoragePlane**’s controller (protocol entry).
 
@@ -167,10 +176,10 @@ call while not `READY`. No unlimited local buffering.
 - Slice **Controller/**: sibling-visible queries; commands only from that slice’s protocol tests.
 - **HTTP/**: MVC and `/v1` on the owning slice.
 - **Provider/**: ceph CLI, systemd, disk identity, proxy command shapes.
-- Layout chrome queries StoragePlane + Integrity **only after authentication**. Login and
-  anonymous 401 pages must not invoke the Ceph CLI. Authenticated chrome reads Integrity’s
-  last raw-health snapshot so HTML does not wait on the Ceph CLI. The Integrity page still
-  loads the full classified snapshot **once** per reload.
+- Layout chrome and Overview query StoragePlane + Integrity **only after authentication**. Login and
+  anonymous 401 pages must not invoke the Ceph CLI. Authenticated chrome and Overview read
+  Integrity’s last snapshot so HTML does not wait on the Ceph CLI. The Integrity page still loads
+  the full classified snapshot and capacity **once** per reload.
 - Control **never polls** Ceph. The monitor is queried only when an external request needs
   confirmation, and only once per request: Integrity HTML/`/v1`, S3 admission after `READY`,
   and Osds `osd dump` overlay on Osds list GET. Historical OSD/device inventory comes from

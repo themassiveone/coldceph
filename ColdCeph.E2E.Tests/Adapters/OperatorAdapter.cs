@@ -134,8 +134,20 @@ public sealed class OperatorAdapter : XceptoAdapter
         {
             var html = await GetHomeHtmlAsync();
             return html.Contains("ColdCeph", StringComparison.Ordinal)
-                   && html.Contains("Operational</span>", StringComparison.Ordinal)
-                   && html.Contains("Storage plane", StringComparison.Ordinal);
+                   && html.Contains("Overview", StringComparison.Ordinal)
+                   && html.Contains("Capacity", StringComparison.Ordinal)
+                   && html.Contains("Data protection", StringComparison.Ordinal);
+        }));
+    }
+
+    public void SeeOverviewCapacity()
+    {
+        AddStep(new ExpectationStepState("overview shows confirmed storage capacity", async () =>
+        {
+            var html = await GetHomeHtmlAsync();
+            return html.Contains("available", StringComparison.Ordinal)
+                   && html.Contains("used of", StringComparison.Ordinal)
+                   && !html.Contains("No capacity reading yet", StringComparison.Ordinal);
         }));
     }
 
