@@ -121,18 +121,40 @@ public sealed class StreamingRgwProxyTests
     }
 
     /// <summary>
-    /// Content-Length is framing: HttpClient sets it from the content it actually sends, and
-    /// forwarding the inbound value can contradict that, which RGW reads as a truncated body.
+    /// The inbound framing is preserved. Without a length HttpClient falls back to chunked
+    /// transfer-encoding, which changes the wire format the signature was computed over and which
+    /// RGW can reject. Kestrel has already enforced that the body matches the declared length, so
+    /// forwarding it cannot contradict what is sent.
     /// </summary>
     [Test]
-    public async Task Put_does_not_forward_the_inbound_content_length()
+    public async Task Put_forwards_the_body_length_rather_than_falling_back_to_chunked()
     {
         var (proxy, handler, context) = Create("PUT", "/cold/object", body: "payload");
-        context.Request.Headers["Content-Length"] = "999999";
 
         await proxy.ProxyAsync(context);
 
-        Assert.That(handler.HeaderValues("Content-Length"), Does.Not.Contain("999999"));
+        Assert.That(handler.LastRequest!.Content!.Headers.ContentLength, Is.EqualTo("payload".Length));
+        Assert.That(handler.LastRequest.Headers.TransferEncodingChunked, Is.Not.True);
+    }
+
+    /// <summary>
+    /// And exactly once. The header copy also sees <c>Content-Length</c>, so without skipping it
+    /// there the length would be added twice.
+    /// <para>
+    /// There is deliberately no case here for an inbound length that contradicts the body: on both
+    /// <c>DefaultHttpContext</c> and Kestrel the header and <c>HttpRequest.ContentLength</c> are the
+    /// same storage, and Kestrel enforces that the body matches it. That state cannot arise.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task Put_sends_content_length_exactly_once()
+    {
+        var (proxy, handler, context) = Create("PUT", "/cold/object", body: "payload");
+
+        await proxy.ProxyAsync(context);
+
+        Assert.That(handler.HeaderValues("Content-Length").ToArray(), Has.Length.EqualTo(1));
+        Assert.That(handler.HeaderValues("Content-Length").Single(), Is.EqualTo("payload".Length.ToString()));
     }
 
     [Test]
@@ -270,7 +292,13 @@ public sealed class StreamingRgwProxyTests
         context.Request.Path = path;
         context.Request.QueryString = new QueryString(query);
         if (body is not null)
-            context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
+        {
+            var bytes = Encoding.UTF8.GetBytes(body);
+            context.Request.Body = new MemoryStream(bytes);
+            // Kestrel populates this for any request with a declared length; the proxy reads it to
+            // preserve the body's framing.
+            context.Request.ContentLength = bytes.Length;
+        }
         context.Response.Body = new MemoryStream();
         return (proxy, context);
     }

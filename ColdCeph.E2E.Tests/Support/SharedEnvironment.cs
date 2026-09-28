@@ -35,12 +35,14 @@ public sealed class SharedEnvironment
     public static Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
     public static string RepositoryRoot { get; private set; } = "";
     public static string CephContainer { get; private set; } = "";
+    public static string NooutScope { get; private set; } = "hdd-osds";
 
     public static async Task StartAsync(CephCluster ceph)
     {
         RepositoryRoot = FindRepositoryRoot();
         CephContainer = ceph.ContainerId;
         RgwAddress = ceph.RgwAddress;
+        NooutScope = ceph.NooutScope;
         _node = await StartNodeAsync();
         _control = await StartControlAsync();
         await WaitUntilListeningAsync(NodeAddress, "/health");
@@ -125,6 +127,7 @@ public sealed class SharedEnvironment
             ConfiguredNodeEndpoints = [NodeAddress],
             ConfiguredNodeHostId = HostId,
             S3Mode = S3AdmissionMode.Retry,
+            NooutScope = NooutScope,
             IdleTimeout = TimeSpan.FromHours(1),
             BindHttpListeners = true
         };

@@ -31,7 +31,16 @@ public sealed class StreamingRgwProxy : IRgwProxy
         using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
 
         if (HasBody(context.Request))
+        {
             request.Content = new StreamContent(context.Request.Body);
+
+            // Preserve the inbound framing. Without a length HttpClient falls back to chunked
+            // transfer-encoding, which changes the wire format the signature was computed over and
+            // which RGW can reject outright. Kestrel has already enforced that the body matches
+            // this length, so forwarding it cannot contradict what is actually sent.
+            if (context.Request.ContentLength is { } length)
+                request.Content.Headers.ContentLength = length;
+        }
 
         CopyRequestHeaders(context.Request, request);
 
@@ -95,8 +104,8 @@ public sealed class StreamingRgwProxy : IRgwProxy
         => name.StartsWith("Content-", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// <c>Content-Length</c> is set by HttpClient from the content itself. Forwarding the inbound
-    /// value can contradict what is actually sent, which RGW reads as a truncated body.
+    /// <c>Content-Length</c> is set from <c>HttpRequest.ContentLength</c> when the body is attached,
+    /// so it is skipped here rather than added twice.
     /// </summary>
     private static bool IsFraming(string name)
         => name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase);

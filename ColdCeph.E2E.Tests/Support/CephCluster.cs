@@ -23,20 +23,26 @@ public sealed class CephCluster : IAsyncDisposable
     public const string Image = "quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8";
     public const int RgwPort = 8080;
 
-    /// <summary>
-    /// The CRUSH bucket StoragePlane scopes its <c>noout</c> to. The OSD is moved into it during
-    /// setup, so <c>osd set-group noout</c> actually covers something and Ceph raises the health
-    /// check ColdCeph has to classify. Pointing it at an empty bucket meant the flag affected
-    /// nothing and the check never appeared.
-    /// </summary>
-    public const string NooutScope = "hdd-osds";
-
     private readonly IContainer _container;
     private bool _disposed;
 
     public Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
     public string ContainerId => _container.Id;
     public string DemoBucket => "cold";
+
+    /// <summary>
+    /// The CRUSH bucket Control scopes its <c>noout</c> to: the host bucket the demo OSD is
+    /// actually under, discovered from <c>osd find</c>.
+    /// <para>
+    /// The point is that <c>osd set-group noout</c> covers a real OSD, so Ceph raises the flags
+    /// check ColdCeph has to classify. Creating a fresh empty bucket meant the flag covered nothing
+    /// and the check never appeared; creating one and moving the host into it as a new CRUSH
+    /// <em>root</em> took the OSD out of <c>root=default</c>, which broke pool mapping and stopped
+    /// RGW from ever finishing its bootstrap. Using the bucket that is already there changes no
+    /// topology at all.
+    /// </para>
+    /// </summary>
+    public string NooutScope { get; private set; } = "hdd-osds";
 
     public CephCluster()
     {
@@ -73,8 +79,10 @@ public sealed class CephCluster : IAsyncDisposable
         RgwAddress = new Uri($"http://127.0.0.1:{_container.GetMappedPublicPort(RgwPort)}");
         await WaitForQuorumAsync(cancellationToken);
         await WaitForOsdUpAsync(cancellationToken);
-        await MoveOsdIntoNooutScopeAsync();
+        // RGW is still creating its pools at this point, so nothing touches the cluster's shape
+        // until it has finished. Interfering here is what stopped it coming up.
         await WaitForRgwAsync(cancellationToken);
+        NooutScope = await ReadOsdHostBucketAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -125,16 +133,25 @@ public sealed class CephCluster : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
-    /// Puts the OSD's host under the bucket StoragePlane scopes noout to, so a scoped noout is a
-    /// real flag on a real OSD and Ceph reports it.
+    /// Reads the CRUSH host bucket osd.0 sits under, so the noout scope names something real
+    /// without changing the cluster's topology.
     /// </summary>
-    private async Task MoveOsdIntoNooutScopeAsync()
+    private async Task<string> ReadOsdHostBucketAsync()
     {
-        // add-bucket is idempotent in effect but errors if it already exists, so it is tolerated.
-        _ = await TryCephAsync("osd", "crush", "add-bucket", NooutScope, "root");
-        await CephAsync("osd", "crush", "move", "ceph", $"root={NooutScope}");
+        var json = await CephAsync("osd", "find", "0", "--format", "json");
+        var match = System.Text.RegularExpressions.Regex.Match(json, "\"host\"\\s*:\\s*\"(?<host>[^\"]+)\"");
+        if (!match.Success)
+            throw new InvalidOperationException(
+                $"Could not read osd.0's CRUSH host from `ceph osd find 0`, so the noout scope would "
+                + $"name a bucket that does not exist and sleep would fail. Output: {json}");
+        return match.Groups["host"].Value;
     }
 
+    /// <summary>
+    /// RGW is the last daemon the demo entrypoint brings up and the slowest, because it creates its
+    /// own pools first. The budget is generous for that reason: it used to be masked by a two-minute
+    /// HEALTH_OK wait ahead of it, and removing that wait left it too tight on a cold CI runner.
+    /// </summary>
     private async Task WaitForRgwAsync(CancellationToken cancellationToken)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
@@ -152,11 +169,42 @@ public sealed class CephCluster : IAsyncDisposable
                     return false;
                 }
             },
-            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes(5),
             cancellationToken);
     }
 
-    private static async Task WaitFor(
+    /// <summary>
+    /// What the cluster looked like when a wait gave up. Gathered here rather than from a CI step
+    /// after the fact, because Testcontainers disposes the container on teardown and a later
+    /// <c>docker logs</c> finds nothing to read.
+    /// </summary>
+    private async Task<string> DiagnosticsAsync()
+    {
+        var parts = new List<string>();
+        try
+        {
+            var logs = await _container.GetLogsAsync();
+            var combined = logs.Stdout + "\n" + logs.Stderr;
+            var lines = combined.Split('\n');
+            parts.Add("--- container log (last 40 lines) ---");
+            parts.AddRange(lines.Skip(Math.Max(0, lines.Length - 40)));
+        }
+        catch (Exception exception)
+        {
+            parts.Add($"--- container log unavailable: {exception.Message}");
+        }
+
+        foreach (var command in new[] { "-s", "osd tree", "health detail" })
+        {
+            var output = await TryCephAsync(command.Split(' '));
+            parts.Add($"--- ceph {command} ---");
+            parts.Add(string.IsNullOrWhiteSpace(output) ? "(no output)" : output.Trim());
+        }
+
+        return string.Join('\n', parts);
+    }
+
+    private async Task WaitFor(
         string what,
         Func<Task<bool>> ready,
         TimeSpan limit,
@@ -171,6 +219,9 @@ public sealed class CephCluster : IAsyncDisposable
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
-        throw new InvalidOperationException($"Demo Ceph did not reach {what} within {limit.TotalMinutes:0.#} minutes.");
+        throw new InvalidOperationException(
+            $"Demo Ceph did not reach {what} within {limit.TotalMinutes:0.#} minutes."
+            + Environment.NewLine
+            + await DiagnosticsAsync());
     }
 }

@@ -106,6 +106,10 @@ Invariants:
 
 - Devices never standby while the mapped OSD process is running.
 - Sleep uses scoped `noout` owned by StoragePlane; never `out` / `safe-to-destroy` / destroy/purge/rm.
+  The scope is `COLDCEPH_NOOUT_SCOPE`, defaulting to the `default` CRUSH root because every cluster
+  has one. It must name a bucket that exists and covers the cold OSDs: `osd set-group noout` fails on
+  an unknown name, and a failed set leaves sleep unable to record what it owns. Narrow it on an
+  appliance whose root also holds OSDs outside the cold plane.
 - `ok-to-stop` is not the all-OSD sleep predicate.
 - Clear only flags StoragePlane recorded as controller-owned.
 - Startup: Nodes push OSD/device snapshots after Allow; Control overlays Ceph `osd dump` up/in
@@ -275,9 +279,16 @@ and the E2E cluster was forced to `HEALTH_OK` before any test ran. See
   safety-critical logic in the product, from ever meeting a real health check. Journeys assert what
   ColdCeph *concludes* from whatever the cluster reports, and a check the classifier does not
   recognise fails the run by name. Setup commands fail loudly rather than being swallowed.
-- StoragePlane’s `noout` scope is a CRUSH bucket that **contains the OSD**, so a scoped `noout`
-  raises the health check ColdCeph has to classify. Scoping it to an empty bucket meant the flag
-  affected nothing and the check never appeared.
+- The E2E noout scope is **discovered, not created**: `CephCluster` reads the CRUSH host bucket
+  osd.0 sits under and passes it as `ControlConfig.NooutScope`, so `set-group noout` covers a real
+  OSD and Ceph raises the flags check ColdCeph has to classify. Creating a fresh empty bucket meant
+  the flag covered nothing; creating one as a new CRUSH *root* and moving the host into it took the
+  OSD out of `root=default`, which broke pool mapping and stopped RGW from ever bootstrapping.
+  Nothing in setup changes the cluster's topology.
+- Setup waits in order: quorum, an OSD up and in, then RGW — and nothing touches the cluster until
+  RGW has answered, because it is still creating its own pools. When a wait gives up it attaches the
+  container log and `ceph -s` / `osd tree` / `health detail` to the exception; a CI step that runs
+  afterwards finds nothing, because Testcontainers has already disposed the container.
 - S3 journeys assert explicit statuses and include a real object **round trip** — PUT then GET the
   same bytes — signed with a payload hash and signed `Content-*` headers, so a dropped signed header
   surfaces as RGW’s 403. “Not a 503” passes on a 403, a 404 and a 500 alike.

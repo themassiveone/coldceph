@@ -90,8 +90,8 @@ public sealed class CephAdapter : XceptoAdapter
     {
         AddStep(new ActionStepState("Control ceph set-group and unset-group noout", () =>
         {
-            _noout.SetGroupNoout(CephCluster.NooutScope);
-            _noout.UnsetGroupNoout(CephCluster.NooutScope);
+            _noout.SetGroupNoout(SharedEnvironment.NooutScope);
+            _noout.UnsetGroupNoout(SharedEnvironment.NooutScope);
             return Task.CompletedTask;
         }));
     }

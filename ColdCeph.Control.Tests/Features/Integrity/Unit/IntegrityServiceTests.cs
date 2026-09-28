@@ -162,7 +162,7 @@ public sealed class IntegrityServiceTests
 
         var snapshot = integrity.GetIntegrity();
 
-        Assert.That(plane.ListOwnedNoout().Select(record => record.Scope), Does.Contain("hdd-osds"));
+        Assert.That(plane.ListOwnedNoout(), Is.Not.Empty);
         Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
         Assert.That(snapshot.Predicates.SleepSafe, Is.True);
     }
