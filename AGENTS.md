@@ -85,9 +85,9 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 
 | Slice | User/maintainer meaning | Owns writes |
 |-------|-------------------------|-------------|
-| **Osds** | Local OSD processes | start/stop/isRunning; push observations to Control after enroll and when the local snapshot changes |
-| **Devices** | Local physical drives | identity, wake/standby; refuse standby while the mapped OSD still runs; push observations with Osds |
-| **Hosts** | This node’s identity and liveness | `/v1/status`; join request to Control when `COLDCEPH_CONTROL_ENDPOINT` is set; 200 means enrolled for inventory push |
+| **Osds** | Local OSD processes | start/stop/isRunning; push observations to Control after enroll, after re-enroll, and when the local snapshot changes |
+| **Devices** | Local physical drives | identity, wake/standby; refuse standby while the mapped OSD still runs; push observations with Osds after enroll, re-enroll, and local change |
+| **Hosts** | This node’s identity and liveness | `/v1/status`; join request to Control when `COLDCEPH_CONTROL_ENDPOINT` is set; 200 means enrolled for inventory push; unreachable Control clears enrollment so the next 200 re-pushes inventory |
 
 ## Core (`ColdCeph.Core`)
 
@@ -97,9 +97,10 @@ Same slice names, **DTOs and IDs only**. No services that mutate. StoragePlane s
 # MVP State Machine and Safety
 
 States: `COLD → WAKING → READY → QUIESCING → SLEEPING → COLD`, plus `FAULTED`. `WAKING` ends
-when Nodes report every OSD process running. Unexpected integrity → `FAULTED` after an
-operator/`/v1`/S3 confirmation, not a timer. `PEERING`, `MAINTENANCE`, and `DEGRADED` are
-later-release states.
+when Nodes report every OSD process running. Unexpected integrity (unfound objects, inconsistent
+or incomplete PGs) → `FAULTED` after an operator/`/v1`/S3 confirmation, not a timer. Ordinary
+Ceph `HEALTH_WARN` checks such as too-few PGs or `OSD_DOWN` while Node processes already run are
+not a reason to `FAULT`. `PEERING`, `MAINTENANCE`, and `DEGRADED` are later-release states.
 
 Invariants:
 
@@ -109,11 +110,15 @@ Invariants:
 - Clear only flags StoragePlane recorded as controller-owned.
 - Startup: Nodes push OSD/device snapshots after Allow; Control overlays Ceph `osd dump` up/in
   at Osds list time (once per operator/`/v1` GET). Persisted `COLD` is not trusted. Control
-  reconcilers do not GET Node inventory and do not invoke the Ceph CLI.
+  reconcilers do not GET Node inventory and do not invoke the Ceph CLI. Enrolled hosts, pending
+  and blocked joins, and the last Node-pushed OSD/device observations persist in SQLite so a
+  Control restart does not require Allow again and does not drop inventory.
 - One StoragePlane transition lease; many S3 requests create one pending-work signal, one wake.
 - Writes fail closed unless Integrity reports `write_ready`; cold `HEALTH_ERR` is classified
 expected, not hidden. Controller-owned scoped `noout` (OSDMAP_FLAGS) is expected, not a
-reason to `FAULT`.
+reason to `FAULT`. Ordinary `HEALTH_WARN` checks are not a reason to `FAULT`.
+- `FAULTED` does not leave automatically when a later confirmation is clean. The operator may
+Wake (`FAULTED` → `WAKING`) when the last confirmation is not a durability failure.
 
 Persistence: SQLite under `/var/lib/coldceph` behind the owning slice’s repositories. Never on
 sleeping HDDs.
@@ -132,8 +137,8 @@ Classic MVC, no Blazor/SPA/HTMX. Cookie operator auth in **Auth** (appliance pas
 multi-tenant Identity). Antiforgery on POSTs. `/v1` returns 401/403 without a login redirect.
 Browser GETs to operator HTML pages send the operator to `/auth/login`. Request-time HTML.
 Pages must not auto-refresh; the operator reloads for a new reading. Wake and Sleep are
-StoragePlane POSTs and only appear when that transition is legal (Wake from `COLD`, Sleep
-from `READY`).
+StoragePlane POSTs and only appear when that transition is legal (Wake from `COLD`, Wake from
+`FAULTED` when the last confirmation is not a durability failure, Sleep from `READY`).
 
 A Razor `ViewLocationExpander` keeps views under `Features/<Slice>/Views/`. Each slice Views
 folder includes `_ViewStart.cshtml` so Razor applies `_Layout` (it discovers ViewStart from the
@@ -192,10 +197,11 @@ call while not `READY`. No unlimited local buffering.
 - StoragePlane, Osds, and Devices reconcilers catch provider exceptions per tick so a
   failed node call cannot stop the loop. The next tick retries.
 - Nodes push `POST /v1/osds/observed` and `POST /v1/devices/observed` (node token, enrolled
-  host only) on enroll and when the local snapshot changes. Node OSD/device snapshots are
-  mutated under a lock so report loops and node HTTP cannot tear the dictionary. Integrity overlays Ceph `osd dump`
-  up/in once per Osds list GET. Osds/Devices reconcilers issue WAKING start/wake and SLEEPING
-  stop/standby only.
+  host only) on enroll, on re-enroll after Control was unreachable, and when the local snapshot
+  changes. An unchanged snapshot is not resent while enrollment stays continuous. Node OSD/device
+  snapshots are mutated under a lock so report loops and node HTTP cannot tear the dictionary.
+  Integrity overlays Ceph `osd dump` up/in once per Osds list GET. Osds/Devices reconcilers
+  issue WAKING start/wake and SLEEPING stop/standby only.
 - `ColdCeph.E2E.Tests`: thin Xcepto only. A project `[SetUpFixture]` starts an assembly-wide
   Testcontainers Ceph demo (`CephCluster`) plus in-process Control and Node **once** and
   reuses that environment. Tests do not start their own stack and must not shell
@@ -266,7 +272,8 @@ Devices reconcilers visit **every enrolled host** for start/stop/wake/standby, n
 They do not poll Node GET lists. Control runs from the IDE (`Control` launch profile or
 `./cc-debug up`). Nodes join with `POST /v1/hosts/join` (no join token) and
 `X-ColdCeph-Node-Endpoint`. Hosts keeps each request **pending** until the operator Allows it on
-`/hosts`. Deny blocks that node until Allow. Credential and port defaults live in `.env.example`
+`/hosts`. That Allow is a one-time trust decision and survives Control restart. Deny blocks that
+node until Allow. Credential and port defaults live in `.env.example`
 and in the Control/Node `Properties/launchSettings.json` profiles. Every default is overridable
 with the same env var name. Optional `COLDCEPH_NODE_ENDPOINT` is configured discovery: Control
 seeds that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only Control→Node command auth, not

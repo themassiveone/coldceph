@@ -53,6 +53,27 @@ public sealed class StoragePlanePagesControllerTests
     }
 
     [Test]
+    public void Overview_offers_wake_from_faulted_when_protection_is_clear()
+    {
+        var model = Model(StoragePlaneState.Faulted);
+
+        Assert.That(model.CanWake, Is.True);
+        Assert.That(model.CanSleep, Is.False);
+        Assert.That(model.Guidance, Does.Contain("Wake storage to resume"));
+        Assert.That(model.Guidance, Does.Not.Contain("Review Data protection"));
+    }
+
+    [Test]
+    public void Overview_does_not_offer_wake_from_faulted_when_objects_are_unfound()
+    {
+        var model = Model(StoragePlaneState.Faulted, durabilityFailure: true);
+
+        Assert.That(model.CanWake, Is.False);
+        Assert.That(model.Guidance, Does.Contain("Review Data protection"));
+        Assert.That(model.Guidance, Does.Not.Contain("Wake storage to resume"));
+    }
+
+    [Test]
     public void Overview_formats_capacity_and_protection_for_people()
     {
         var model = Model(StoragePlaneState.Ready);
@@ -75,7 +96,8 @@ public sealed class StoragePlanePagesControllerTests
     private static StoragePlanePageViewModel Model(
         StoragePlaneState state,
         bool configured = true,
-        bool capacityKnown = true)
+        bool capacityKnown = true,
+        bool durabilityFailure = false)
     {
         ClusterCapacityDto? capacity = capacityKnown ? new ClusterCapacityDto
         {
@@ -96,15 +118,30 @@ public sealed class StoragePlanePagesControllerTests
         };
         var integrity = new IntegritySnapshot
         {
-            Raw = new CephHealthRaw { Status = "HEALTH_OK", Summary = "HEALTH_OK", Checks = [] },
-            Checks = [],
+            Raw = new CephHealthRaw
+            {
+                Status = durabilityFailure ? "HEALTH_ERR" : "HEALTH_OK",
+                Summary = durabilityFailure ? "unfound objects" : "HEALTH_OK",
+                Checks = durabilityFailure ? ["OBJECT_UNFOUND: unfound objects"] : []
+            },
+            Checks = durabilityFailure
+                ?
+                [
+                    new ClassifiedHealthCheck
+                    {
+                        Name = "OBJECT_UNFOUND",
+                        Detail = "OBJECT_UNFOUND: unfound objects",
+                        Classification = HealthClassification.Unexpected
+                    }
+                ]
+                : [],
             Predicates = new ReadinessPredicates
             {
-                ControlPlaneAvailable = true,
-                OsdPlaneExpected = true,
-                ReadReady = true,
-                WriteReady = true,
-                SleepSafe = true
+                ControlPlaneAvailable = !durabilityFailure,
+                OsdPlaneExpected = !durabilityFailure,
+                ReadReady = !durabilityFailure,
+                WriteReady = !durabilityFailure,
+                SleepSafe = !durabilityFailure
             },
             Capacity = capacity,
             CapacityUnavailableReason = capacity is null ? "not checked" : null,

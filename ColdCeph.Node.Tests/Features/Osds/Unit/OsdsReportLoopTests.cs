@@ -51,6 +51,23 @@ public sealed class OsdsReportLoopTests
     }
 
     [Test]
+    public void ReportOnce_resends_the_same_snapshot_after_reenroll()
+    {
+        var (loop, reporter, runtime, hosts) = Create();
+        runtime.Listed.Add(0);
+        hosts.NoteJoinStatus(200);
+        loop.ReportOnce();
+
+        hosts.NoteJoinStatus(202);
+        loop.ReportOnce();
+        hosts.NoteJoinStatus(200);
+        loop.ReportOnce();
+
+        Assert.That(reporter.Sent, Has.Count.EqualTo(2));
+        Assert.That(reporter.Sent[1].Osds.Select(osd => osd.OsdId), Does.Contain(0));
+    }
+
+    [Test]
     public void ReportOnce_sends_again_after_start()
     {
         var (loop, reporter, runtime, hosts, osds) = CreateWithOsds();

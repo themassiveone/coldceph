@@ -136,7 +136,7 @@ public sealed class IntegrityService
 
     private static HealthClassification ClassifyOne(string check, StoragePlaneState plane)
     {
-        if (Contains(check, "unfound") || Contains(check, "inconsistent") || Contains(check, "incomplete"))
+        if (IntegrityDurability.IsFailure(check))
             return HealthClassification.Unexpected;
 
         if (Contains(check, "noout"))

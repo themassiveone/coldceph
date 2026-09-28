@@ -3,8 +3,11 @@ using ColdCeph.Control.Features.Auth.Services;
 using ColdCeph.Control.Features.Devices.Controllers;
 using ColdCeph.Control.Features.Devices.Interfaces;
 using ColdCeph.Control.Features.Devices.Providers;
+using ColdCeph.Control.Features.Devices.Repositories;
 using ColdCeph.Control.Features.Devices.Services;
 using ColdCeph.Control.Features.Hosts.Controllers;
+using ColdCeph.Control.Features.Hosts.Interfaces;
+using ColdCeph.Control.Features.Hosts.Repositories;
 using ColdCeph.Control.Features.Hosts.Services;
 using ColdCeph.Control.Features.Integrity.Controllers;
 using ColdCeph.Control.Features.Integrity.Interfaces;
@@ -18,6 +21,7 @@ using ColdCeph.Control.Features.Operations.Services;
 using ColdCeph.Control.Features.Osds.Controllers;
 using ColdCeph.Control.Features.Osds.Interfaces;
 using ColdCeph.Control.Features.Osds.Providers;
+using ColdCeph.Control.Features.Osds.Repositories;
 using ColdCeph.Control.Features.Osds.Services;
 using ColdCeph.Control.Features.S3.Controllers;
 using ColdCeph.Control.Features.S3.Interfaces;
@@ -65,14 +69,17 @@ public static class AppComposition
         builder.Services.AddSingleton<S3Controller>();
         builder.Services.AddSingleton<S3GatewayController>();
 
+        builder.Services.AddSingleton<IHostsRepository, SqliteHostsRepository>();
         builder.Services.AddSingleton<HostsService>();
         builder.Services.AddSingleton<HostsController>();
 
         builder.Services.AddSingleton<INodeOsdsClient, HttpNodeOsdsClient>();
+        builder.Services.AddSingleton<IOsdsObservationRepository, SqliteOsdsObservationRepository>();
         builder.Services.AddSingleton<OsdsService>();
         builder.Services.AddSingleton<OsdsController>();
 
         builder.Services.AddSingleton<INodeDevicesClient, HttpNodeDevicesClient>();
+        builder.Services.AddSingleton<IDevicesObservationRepository, SqliteDevicesObservationRepository>();
         builder.Services.AddSingleton<DevicesService>();
         builder.Services.AddSingleton<DevicesController>();
 

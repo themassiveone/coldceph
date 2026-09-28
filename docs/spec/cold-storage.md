@@ -584,7 +584,11 @@ Examples:
 - PGs remain incomplete;
 - unfound objects exist.
 
-No automatic sleep transition should proceed from `FAULTED`.
+No automatic sleep transition should proceed from `FAULTED`. A later clean Integrity
+confirmation does not by itself leave `FAULTED`. The operator may Wake (`FAULTED` → `WAKING`)
+when the last confirmation is not a durability failure (unfound objects, inconsistent PGs, or
+incomplete PGs). Ordinary Ceph `HEALTH_WARN` checks such as too-few PGs or `OSD_DOWN` while OSD
+processes already run are not a reason to enter `FAULTED`.
 
 ---
 
@@ -1991,7 +1995,10 @@ POST /v1/devices/{id}/standby
 Operations must be idempotent.
 
 Control does not poll these Node GET lists for inventory. After Allow, the Node POSTs
-`/v1/osds/observed` and `/v1/devices/observed` on Control when local OSD/device state changes.
+`/v1/osds/observed` and `/v1/devices/observed` on enroll, after Control becomes reachable
+again, and when local OSD/device state changes. Control persists the last observations so a
+Control restart does not drop inventory. Allow is a one-time host trust decision and also
+persists.
 
 For example:
 
@@ -2508,8 +2515,9 @@ without rewriting the controller.
 
 Control never polls the monitor.
 
-Inventory (OSD processes, disk identity, power) is pushed by Nodes on enroll and when the
-local snapshot changes. Control stores that history and does not GET Node lists on a timer.
+Inventory (OSD processes, disk identity, power) is pushed by Nodes on enroll, on re-enroll
+after Control was unreachable, and when the local snapshot changes. Control stores that
+history in SQLite and does not GET Node lists on a timer.
 
 Ceph is queried only when an external request needs confirmation, and only once for that
 request:

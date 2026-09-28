@@ -125,6 +125,19 @@ public sealed class StoragePlaneServiceTests
     }
 
     [Test]
+    public void RequestWake_from_faulted_enters_waking()
+    {
+        var plane = Create(out _, out _);
+        plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        plane.EnterFaulted("unexpected-integrity");
+
+        var lease = plane.RequestWake(OperationIdRules.Create().Value, "operator");
+
+        Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+        Assert.That(lease.Holder, Is.EqualTo("operator"));
+    }
+
+    [Test]
     public void Unexpected_integrity_can_fault_from_cold()
     {
         var plane = Create(out _, out _);

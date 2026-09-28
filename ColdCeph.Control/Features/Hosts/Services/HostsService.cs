@@ -1,4 +1,5 @@
 using ColdCeph.Control.Composition;
+using ColdCeph.Control.Features.Hosts.Interfaces;
 using ColdCeph.Control.Features.Hosts.Models;
 using ColdCeph.Control.Shared;
 using ColdCeph.Core.Features.Hosts.DTOs;
@@ -9,19 +10,27 @@ public sealed class HostsService
 {
     private readonly ControlConfig _config;
     private readonly IClock _clock;
-    private readonly Dictionary<string, HostDto> _hosts = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, HostJoinRequestDto> _pending = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, HostJoinRequestDto> _blocked = new(StringComparer.Ordinal);
+    private readonly IHostsRepository? _repository;
+    private readonly Dictionary<string, HostDto> _hosts;
+    private readonly Dictionary<string, HostJoinRequestDto> _pending;
+    private readonly Dictionary<string, HostJoinRequestDto> _blocked;
 
-    public HostsService(ControlConfig config, IClock clock)
+    public HostsService(ControlConfig config, IClock clock, IHostsRepository? repository = null)
     {
         _config = config;
         _clock = clock;
+        _repository = repository;
+        var loaded = repository?.Load() ?? new HostsRecord();
+        _hosts = loaded.Hosts;
+        _pending = loaded.Pending;
+        _blocked = loaded.Blocked;
         for (var index = 0; index < config.ConfiguredNodeEndpoints.Count; index++)
         {
             var hostId = config.ConfiguredNodeEndpoints.Count == 1
                 ? config.ConfiguredNodeHostId
                 : $"{config.ConfiguredNodeHostId}-{index + 1}";
+            if (_hosts.ContainsKey(hostId))
+                continue;
             RegisterHeartbeat(
                 new NodeStatusDto { HostId = hostId, Hostname = hostId, ObservedAt = clock.UtcNow },
                 config.ConfiguredNodeEndpoints[index]);
@@ -53,6 +62,7 @@ public sealed class HostsService
         _hosts[status.HostId] = host;
         _pending.Remove(status.HostId);
         _blocked.Remove(status.HostId);
+        Persist();
         return host;
     }
 
@@ -76,10 +86,12 @@ public sealed class HostsService
         if (_blocked.ContainsKey(status.HostId))
         {
             _blocked[status.HostId] = request;
+            Persist();
             return new NodeJoinResult(403, null);
         }
 
         _pending[status.HostId] = request;
+        Persist();
         return new NodeJoinResult(202, null);
     }
 
@@ -97,8 +109,17 @@ public sealed class HostsService
         if (!_pending.Remove(hostId, out var pending))
             return false;
         _blocked[hostId] = pending;
+        Persist();
         return true;
     }
+
+    private void Persist()
+        => _repository?.Save(new HostsRecord
+        {
+            Hosts = new Dictionary<string, HostDto>(_hosts, StringComparer.Ordinal),
+            Pending = new Dictionary<string, HostJoinRequestDto>(_pending, StringComparer.Ordinal),
+            Blocked = new Dictionary<string, HostJoinRequestDto>(_blocked, StringComparer.Ordinal)
+        });
 
     private static NodeStatusDto ToStatus(HostJoinRequestDto request)
         => new()

@@ -39,7 +39,7 @@ public sealed class HostsHeartbeatLoop : BackgroundService
         }
         catch (Exception)
         {
-            // Control being down must not stop the node.
+            _hosts.NoteJoinStatus(0);
         }
     }
 }

@@ -14,7 +14,7 @@
         {
             <form method="post" action="/wake">
                 @Html.AntiForgeryToken()
-                <button class="cc-btn cc-btn-primary" type="submit">Wake storage</button>
+                <button class="cc-btn cc-btn-primary" type="submit">@(Model.Snapshot.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Faulted ? "Resume storage" : "Wake storage")</button>
             </form>
         }
         @if (Model.CanSleep)
@@ -28,7 +28,7 @@
         {
             <a class="cc-btn cc-btn-primary" href="/hosts">Finish setup</a>
         }
-        else if (Model.Snapshot.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Faulted)
+        else if (Model.Snapshot.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Faulted && !Model.CanWake)
         {
             <a class="cc-btn cc-btn-primary" href="/integrity">Review problem</a>
         }

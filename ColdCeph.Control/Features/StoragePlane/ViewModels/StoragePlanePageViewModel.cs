@@ -26,7 +26,13 @@ public sealed class StoragePlanePageViewModel
                                  && DiskCount > 0
                                  && StorageServiceCount > 0;
 
-    public bool CanWake => Snapshot.State == StoragePlaneState.Cold && SetupComplete;
+    public bool CanWake => SetupComplete
+                           && Snapshot.State switch
+                           {
+                               StoragePlaneState.Cold => true,
+                               StoragePlaneState.Faulted => !IntegrityDurability.HasFailure(Integrity),
+                               _ => false
+                           };
 
     public bool CanSleep => Snapshot.State == StoragePlaneState.Ready;
 
@@ -59,7 +65,9 @@ public sealed class StoragePlanePageViewModel
         StoragePlaneState.Sleeping =>
             "Storage services are stopping and disks are entering standby.",
         StoragePlaneState.Faulted =>
-            "Automatic transitions have stopped. Review Data protection for the cause and next action.",
+            IntegrityDurability.HasFailure(Integrity)
+                ? "Automatic transitions have stopped. Review Data protection for the cause and next action."
+                : "Automatic transitions have stopped. Wake storage to resume now that protection looks clear.",
         _ => string.Empty
     };
 

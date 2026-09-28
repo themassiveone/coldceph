@@ -48,7 +48,19 @@ public sealed class HostsHeartbeatLoopTests
         Assert.That(hosts.IsControlEnrolled(), Is.False);
     }
 
-    private static (HostsHeartbeatLoop Loop, HostsController Hosts) Create(RecordingHeartbeatClient client)
+    [Test]
+    public void BeatOnce_unenrolls_when_control_is_unreachable()
+    {
+        var client = new ThrowingHeartbeatClient();
+        var (loop, hosts) = Create(client);
+        hosts.NoteJoinStatus(200);
+
+        loop.BeatOnce();
+
+        Assert.That(hosts.IsControlEnrolled(), Is.False);
+    }
+
+    private static (HostsHeartbeatLoop Loop, HostsController Hosts) Create(IControlHeartbeatClient client)
     {
         var config = new NodeConfig
         {
@@ -71,5 +83,11 @@ public sealed class HostsHeartbeatLoopTests
             Calls.Add((status, advertiseEndpoint));
             return StatusCode;
         }
+    }
+
+    private sealed class ThrowingHeartbeatClient : IControlHeartbeatClient
+    {
+        public int Send(NodeStatusDto status, Uri advertiseEndpoint)
+            => throw new HttpRequestException("control unreachable");
     }
 }

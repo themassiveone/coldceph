@@ -1,4 +1,5 @@
 using System.Net;
+using ColdCeph.Control.Features.StoragePlane.Services;
 using ColdCeph.Control.Features.Osds.Controllers;
 using ColdCeph.Control.Features.Devices.Controllers;
 using ColdCeph.Control.Features.Hosts.Controllers;
@@ -105,6 +106,24 @@ public sealed class StoragePlanePagesHttpTests
         Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(1));
         Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(1));
         Assert.That(factory.Ceph.MembershipCalls, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task Home_offers_resume_from_faulted_after_a_clean_confirmation()
+    {
+        using var factory = new Support.ControlAppFactory();
+        ConfigureStorage(factory);
+        factory.Services.GetRequiredService<StoragePlaneService>()
+            .EnterFaulted("unexpected-integrity");
+        using var client = await Support.OperatorClient.SignedIn(factory);
+        _ = await client.GetStringAsync("/integrity");
+
+        var html = await client.GetStringAsync("/");
+
+        Assert.That(html, Does.Contain("action=\"/wake\""));
+        Assert.That(html, Does.Contain("Resume storage"));
+        Assert.That(html, Does.Not.Contain("Review problem"));
+        Assert.That(html, Does.Contain("Wake storage to resume"));
     }
 
     [Test]

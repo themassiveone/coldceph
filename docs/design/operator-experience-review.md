@@ -215,7 +215,7 @@ Translate internal states consistently:
 | `WAKING` | **Getting storage ready** | Disks and storage services are starting |
 | `READY`, write-ready | **Ready for backups** | Reads and writes available |
 | `QUIESCING`/`SLEEPING` | **Going to sleep** | Finishing activity and parking disks |
-| `FAULTED` | **Needs attention** | State the impact and the single recommended next action |
+| `FAULTED` | **Needs attention** | State the impact and the single recommended next action: Review Data protection when durability failed, or Wake/Resume when the last confirmation is already clean |
 | no confirmed snapshot | **Not checked yet** | Never imply protected or healthy |
 
 Do not put raw `HEALTH_ERR` in global chrome during an expected cold state. Instead show the

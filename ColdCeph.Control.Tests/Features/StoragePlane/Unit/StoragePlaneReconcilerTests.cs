@@ -95,6 +95,63 @@ public sealed class StoragePlaneReconcilerTests
     }
 
     [Test]
+    public void Ordinary_health_warn_after_confirm_does_not_fault()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        harness.Ceph.Health = new()
+        {
+            Status = "HEALTH_WARN",
+            Summary = "too few PGs",
+            Checks = ["TOO_FEW_PGS: too few PGs"]
+        };
+        harness.Ceph.HealthChecks = ["TOO_FEW_PGS: too few PGs"];
+
+        _ = harness.Integrity.GetIntegrity();
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.Not.EqualTo(StoragePlaneState.Faulted));
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Cold));
+    }
+
+    [Test]
+    public void Osd_down_while_ready_after_confirm_does_not_fault()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        var operationId = OperationIdRules.Create().Value;
+        harness.Plane.RequestWake(operationId, "operator");
+        harness.Plane.EnterReady(operationId);
+        harness.Ceph.Health = new()
+        {
+            Status = "HEALTH_WARN",
+            Summary = "1 osds down",
+            Checks = ["OSD_DOWN: 1 osds down"]
+        };
+        harness.Ceph.HealthChecks = ["OSD_DOWN: 1 osds down"];
+
+        _ = harness.Integrity.GetIntegrity();
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Ready));
+        Assert.That(harness.Plane.GetState().State, Is.Not.EqualTo(StoragePlaneState.Faulted));
+    }
+
+    [Test]
+    public void Clean_confirm_does_not_leave_faulted_without_operator_wake()
+    {
+        var harness = Create();
+        harness.Plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        harness.Plane.EnterFaulted("unexpected-integrity");
+        _ = harness.Integrity.GetIntegrity();
+
+        harness.Reconciler.ReconcileOnce();
+
+        Assert.That(harness.Plane.GetState().State, Is.EqualTo(StoragePlaneState.Faulted));
+        Assert.That(harness.Integrity.GetLastIntegrity().Raw.Status, Is.EqualTo("HEALTH_OK"));
+    }
+
+    [Test]
     public void Waking_enters_ready_when_every_osd_process_is_running()
     {
         var harness = Create();
