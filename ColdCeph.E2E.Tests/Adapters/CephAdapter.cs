@@ -82,14 +82,30 @@ public sealed class CephAdapter : XceptoAdapter
             var namesLookRight = observation.HealthChecks.All(check =>
                 check.Name.Length > 0
                 && check.Name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character) || character == '_'));
+
+            // A wrong path to the message would leave every message empty, and nothing else here
+            // would notice — while classification of a controller-owned noout, which matches flag
+            // words in the message, would silently stop recognising it. Same failure mode as
+            // reading PG states from a command that does not carry them.
+            var messagesLookRight = observation.HealthChecks.All(check => check.Message.Length > 0);
+            var severitiesLookRight = observation.HealthChecks.All(check =>
+                check.Severity.StartsWith("HEALTH_", StringComparison.Ordinal));
+
+            // Every PG state has to parse into tokens ColdCeph's vocabulary recognises. A state
+            // string it cannot split is a state whose readiness it cannot judge.
+            var pgStatesLookRight = observation.PgStates.Count > 0
+                                    && observation.PgStates.All(state => state.Count > 0 && state.Tokens.Any());
+
             var capacityLooksRight = observation.Capacity is { TotalBytes: > 0 } capacity
                                      && capacity.UsedBytes >= 0
                                      && capacity.AvailableBytes >= 0;
             var signals = CephSignals.From(observation);
             return Task.FromResult(
                 namesLookRight
+                && messagesLookRight
+                && severitiesLookRight
                 && capacityLooksRight
-                && observation.PgStates.Count > 0
+                && pgStatesLookRight
                 && observation.QuorumAvailable
                 && !signals.DurabilityFailure);
         }));
