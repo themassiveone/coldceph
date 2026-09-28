@@ -54,7 +54,7 @@ When you do have a cluster in front of you, prefer re-capturing:
 
 ```sh
 ./cc-debug up
-for c in "health detail" "status" "quorum_status" "pg stat" "osd dump"; do
+for c in "health detail" "status" "quorum_status" "osd dump"; do
   docker exec coldceph-mon ceph --format json $c \
     > ColdCeph.Control.Tests/Support/CephFixtures/<scenario>/$(echo "$c" | tr ' ' '-').json
 done
