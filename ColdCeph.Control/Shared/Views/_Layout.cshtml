@@ -7,7 +7,7 @@
     var login = path.StartsWith("/auth", StringComparison.OrdinalIgnoreCase);
     var signedIn = User.Identity?.IsAuthenticated == true;
     var plane = signedIn && !login ? StoragePlane.GetState() : null;
-    var health = signedIn && !login ? Integrity.GetRawHealth() : null;
+    var integrity = signedIn && !login ? Integrity.GetLastIntegrity() : null;
     string NavClass(string href)
         => href == "/"
             ? (path == "/" ? "cc-nav-link is-current" : "cc-nav-link")
@@ -38,11 +38,18 @@ else
     <div class="cc-shell">
         <header class="cc-top">
             <a class="cc-brand" href="/">ColdCeph</a>
-            @if (plane is not null && health is not null)
+            @if (plane is not null && integrity is not null)
             {
                 <div class="cc-top-status">
-                    <span class="@Chip(plane.State.ToString())"><span class="label">Operational</span> <b>@plane.State</b></span>
-                    <span class="@Chip(health.Status)"><span class="label">Ceph</span> <b>@health.Status</b></span>
+                    <span class="@Chip(plane.State.ToString())"><span class="label">Storage</span> <b>@(plane.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Cold ? "Asleep" : plane.State)</b></span>
+                    @if (integrity.LastVerifiedCleanAt is not null)
+                    {
+                        <span class="cc-chip cc-chip-ok"><span class="label">Protection</span> <b>Verified</b></span>
+                    }
+                    else
+                    {
+                        <span class="cc-chip cc-chip-idle"><span class="label">Protection</span> <b>Not checked</b></span>
+                    }
                 </div>
             }
             <div class="cc-top-tools">
@@ -50,13 +57,12 @@ else
             </div>
         </header>
         <nav class="cc-rail" aria-label="Operator">
-            <a class="@NavClass("/")" href="/">Storage</a>
-            <a class="@NavClass("/integrity")" href="/integrity">Integrity</a>
-            <a class="@NavClass("/hosts")" href="/hosts">Hosts</a>
-            <a class="@NavClass("/osds")" href="/osds">OSDs</a>
-            <a class="@NavClass("/devices")" href="/devices">Devices</a>
-            <a class="@NavClass("/s3")" href="/s3">S3</a>
-            <a class="@NavClass("/operations")" href="/operations">Operations</a>
+            <a class="@NavClass("/")" href="/">Overview</a>
+            <a class="@NavClass("/hosts")" href="/hosts">Storage</a>
+            <a class="@NavClass("/s3")" href="/s3">Buckets</a>
+            <a class="@NavClass("/operations")" href="/operations">Activity</a>
+            <a class="@NavClass("/osds")" href="/osds">Storage services</a>
+            <a class="@NavClass("/devices")" href="/devices">Disk details</a>
             @if (signedIn)
             {
                 <form class="cc-rail-foot" method="post" action="/auth/logout">

@@ -23,8 +23,17 @@ public sealed class FakeCephQueryProvider : ICephQueryProvider
     public IReadOnlyList<string> HealthChecks { get; set; } = [];
 
     public bool ThrowOnHealth { get; set; }
+    public bool ThrowOnCapacity { get; set; }
+
+    public ClusterCapacityDto Capacity { get; set; } = new()
+    {
+        TotalBytes = 3_000_000_000,
+        UsedBytes = 1_000_000_000,
+        AvailableBytes = 2_000_000_000
+    };
 
     public int HealthDetailCalls { get; set; }
+    public int CapacityCalls { get; set; }
 
     public CephHealthRaw GetHealthDetail()
     {
@@ -32,6 +41,13 @@ public sealed class FakeCephQueryProvider : ICephQueryProvider
             throw new InvalidOperationException("ceph unavailable");
         HealthDetailCalls++;
         return Health;
+    }
+    public ClusterCapacityDto GetCapacity()
+    {
+        if (ThrowOnCapacity)
+            throw new InvalidOperationException("capacity unavailable");
+        CapacityCalls++;
+        return Capacity;
     }
     public bool GetQuorumAvailable() => QuorumAvailable;
     public bool GetPgsActive() => PgsActive;

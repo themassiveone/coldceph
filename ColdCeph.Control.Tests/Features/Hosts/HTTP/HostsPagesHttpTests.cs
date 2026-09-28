@@ -42,8 +42,8 @@ public sealed class HostsPagesHttpTests
 
         var html = await client.GetStringAsync("/hosts");
 
-        Assert.That(html, Does.Contain("No join requests"));
-        Assert.That(html, Does.Contain("No machines enrolled"));
+        Assert.That(html, Does.Contain("No machines are waiting for approval"));
+        Assert.That(html, Does.Contain("No storage machines are connected"));
         Assert.That(html, Does.Not.Contain("http-equiv=\"refresh\""));
     }
 
@@ -61,7 +61,7 @@ public sealed class HostsPagesHttpTests
         Assert.That(html, Does.Contain("rack-a"));
         Assert.That(html, Does.Contain("action=\"/hosts/h1/approve\""));
         Assert.That(html, Does.Contain("action=\"/hosts/h1/deny\""));
-        Assert.That(html, Does.Not.Contain("No join requests"));
+        Assert.That(html, Does.Not.Contain("No machines are waiting for approval"));
     }
 
     [Test]

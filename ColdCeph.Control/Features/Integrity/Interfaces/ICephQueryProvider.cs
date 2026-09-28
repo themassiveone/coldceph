@@ -5,6 +5,7 @@ namespace ColdCeph.Control.Features.Integrity.Interfaces;
 public interface ICephQueryProvider
 {
     CephHealthRaw GetHealthDetail();
+    ClusterCapacityDto GetCapacity();
     bool GetQuorumAvailable();
     bool GetPgsActive();
     bool GetPgsClean();

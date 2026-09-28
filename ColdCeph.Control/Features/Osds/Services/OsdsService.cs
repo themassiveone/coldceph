@@ -8,13 +8,21 @@ public sealed class OsdsService
 {
     private readonly INodeOsdsClient _node;
     private readonly ControlConfig _config;
+    private readonly IOsdsObservationRepository? _repository;
     private readonly Dictionary<string, OsdDto> _osds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _hostErrors = new(StringComparer.Ordinal);
 
-    public OsdsService(INodeOsdsClient node, ControlConfig config)
+    public OsdsService(INodeOsdsClient node, ControlConfig config, IOsdsObservationRepository? repository = null)
     {
         _node = node;
         _config = config;
+        _repository = repository;
+        if (repository is null)
+            return;
+        foreach (var osd in repository.LoadOsds())
+            _osds[Key(osd.HostId, osd.OsdId)] = osd;
+        foreach (var error in repository.LoadErrors())
+            _hostErrors[error.Key] = error.Value;
     }
 
     public IReadOnlyList<OsdDto> ListOsds() => _osds.Values.ToArray();
@@ -29,7 +37,11 @@ public sealed class OsdsService
 
     public bool IsEveryProcessStopped() => _osds.Values.All(osd => !osd.ProcessRunning);
 
-    public void Seed(OsdDto osd) => _osds[Key(osd.HostId, osd.OsdId)] = osd;
+    public void Seed(OsdDto osd)
+    {
+        _osds[Key(osd.HostId, osd.OsdId)] = osd;
+        Persist();
+    }
 
     public void ApplyObserved(HostOsdsObservationDto observation)
     {
@@ -43,6 +55,7 @@ public sealed class OsdsService
             _hostErrors.Remove(observation.HostId);
         else
             _hostErrors[observation.HostId] = observation.Error;
+        Persist();
     }
 
     public void StartAll(string hostId, Uri nodeEndpoint, string operationId)
@@ -68,7 +81,11 @@ public sealed class OsdsService
                 : _node.Stop(nodeEndpoint, request);
             _osds[Key(hostId, osd.OsdId)] = osd with { ProcessRunning = result.ProcessRunning, Up = result.ProcessRunning };
         }
+        Persist();
     }
+
+    private void Persist()
+        => _repository?.Save(_osds.Values.ToArray(), _hostErrors);
 
     private static string Key(string hostId, int osdId) => $"{hostId}\u001f{osdId}";
 }

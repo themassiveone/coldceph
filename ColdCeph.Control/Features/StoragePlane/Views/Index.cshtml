@@ -1,41 +1,120 @@
 @model ColdCeph.Control.Features.StoragePlane.ViewModels.StoragePlanePageViewModel
 @{
-    ViewData["Title"] = "Storage";
+    ViewData["Title"] = "Overview";
 }
-<p class="cc-page-kicker">Storage plane</p>
-<div class="cc-hero">
+<p class="cc-page-kicker">Overview</p>
+<div class="cc-hero cc-hero-@Model.Tone">
     <div>
         <h1>@Model.Headline</h1>
         <p class="cc-lead">@Model.Guidance</p>
-        <span class="cc-chip cc-chip-@Model.Tone">@Model.Snapshot.State</span>
+        <p class="cc-freshness">Status observed @Model.Snapshot.ObservedAt.ToString("u")</p>
     </div>
     <div class="cc-actions">
         @if (Model.CanWake)
         {
             <form method="post" action="/wake">
                 @Html.AntiForgeryToken()
-                <button class="cc-btn cc-btn-primary" type="submit">Wake disks</button>
+                <button class="cc-btn cc-btn-primary" type="submit">@(Model.Snapshot.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Faulted ? "Resume storage" : "Wake storage")</button>
             </form>
         }
         @if (Model.CanSleep)
         {
             <form method="post" action="/sleep">
                 @Html.AntiForgeryToken()
-                <button class="cc-btn cc-btn-danger" type="submit">Sleep disks</button>
+                <button class="cc-btn cc-btn-danger" type="submit">Put storage to sleep</button>
+            </form>
+        }
+        @if (!Model.SetupComplete)
+        {
+            <a class="cc-btn cc-btn-primary" href="/hosts">Finish setup</a>
+        }
+        else if (Model.Snapshot.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Faulted && !Model.CanWake)
+        {
+            <form method="post" action="/integrity/check">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn cc-btn-primary" type="submit">Check protection</button>
             </form>
         }
     </div>
 </div>
-<section class="cc-card">
-    <h2>Observation</h2>
-    <dl class="cc-dl">
-        <dt>Trusted</dt>
-        <dd>@(Model.Snapshot.Trusted ? "reconciled against Ceph" : "startup, not yet trusted")</dd>
-        <dt>Journal</dt>
-        <dd>@(Model.Snapshot.JournalStep ?? "none")</dd>
-        <dt>Lease holder</dt>
-        <dd>@(Model.Snapshot.LeaseHolder ?? "none")</dd>
-        <dt>Observed</dt>
-        <dd>@Model.Snapshot.ObservedAt.ToString("u")</dd>
-    </dl>
-</section>
+
+@if (!Model.SetupComplete)
+{
+    <section class="cc-card" aria-labelledby="setup-heading">
+        <h2 id="setup-heading">Storage setup</h2>
+        <ol class="cc-steps">
+            <li class="@(Model.HostCount > 0 ? "is-done" : "")">
+                <strong>Connect storage machines</strong>
+                <span>@(Model.HostCount > 0 ? $"{Model.AliveHostCount} of {Model.HostCount} online" : "Waiting for a machine to join")</span>
+            </li>
+            <li class="@(Model.PendingHostCount == 0 && Model.HostCount > 0 ? "is-done" : "")">
+                <strong>Approve discovered machines</strong>
+                <span>@(Model.PendingHostCount > 0 ? $"{Model.PendingHostCount} waiting for approval" : Model.HostCount > 0 ? "No approvals waiting" : "Available after discovery")</span>
+            </li>
+            <li class="@(Model.DiskCount > 0 && Model.StorageServiceCount > 0 ? "is-done" : "")">
+                <strong>Verify disks</strong>
+                <span>@(Model.DiskCount > 0 ? $"{Model.DiskCount} disks · {Model.StorageServiceCount} storage services" : "Waiting for disk inventory")</span>
+            </li>
+            <li class="@(Model.Integrity.Raw.Status != "UNAVAILABLE" ? "is-done" : "")">
+                <strong>Check data protection</strong>
+                <span>@(Model.Integrity.Raw.Status != "UNAVAILABLE" ? $"Checked {Model.Integrity.ObservedAt:u}" : "Check protection when the cluster is reachable")</span>
+            </li>
+        </ol>
+    </section>
+}
+
+<div class="cc-metric-grid">
+    <section class="cc-card cc-metric" aria-labelledby="capacity-heading">
+        <p class="cc-card-label">Capacity</p>
+        <h2 id="capacity-heading">@Model.CapacityAvailable available</h2>
+        @if (Model.CapacityPercent is int percent)
+        {
+            <div class="cc-capacity-track" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@percent">
+                <span style="width: @Math.Min(percent, 100)%"></span>
+            </div>
+            <p>@Model.CapacityUsed used of @Model.CapacityTotal</p>
+            <p class="cc-freshness">Checked @Model.Integrity.ObservedAt.ToString("u")</p>
+        }
+        else
+        {
+            <form method="post" action="/integrity/check">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn" type="submit">Check protection</button>
+            </form>
+            <p class="cc-freshness">No capacity reading yet</p>
+        }
+    </section>
+
+    <section class="cc-card cc-metric" aria-labelledby="availability-heading">
+        <p class="cc-card-label">Backup access</p>
+        <h2 id="availability-heading">@Model.AvailabilitySummary</h2>
+        <p>@(Model.Work.ActiveCount > 0 || Model.Work.QueuedCount > 0 ? $"{Model.Work.ActiveCount} active · {Model.Work.QueuedCount} waiting" : "No backup activity right now")</p>
+        <p class="cc-freshness">Storage is @Model.Snapshot.State.ToString().ToLowerInvariant()</p>
+    </section>
+
+    <section class="cc-card cc-metric" aria-labelledby="protection-heading">
+        <p class="cc-card-label">Data protection</p>
+        <h2 id="protection-heading">@Model.ProtectionSummary</h2>
+        @if (Model.ProtectionProblems.Count > 0)
+        {
+            <ul class="cc-checks">
+                @foreach (var problem in Model.ProtectionProblems)
+                {
+                    <li>@problem</li>
+                }
+            </ul>
+        }
+        <form method="post" action="/integrity/check">
+            @Html.AntiForgeryToken()
+            <button class="cc-btn" type="submit">Check protection</button>
+        </form>
+        <p class="cc-freshness">@(Model.Integrity.Raw.Status == "UNAVAILABLE" ? "Not checked" : $"Last reading {Model.Integrity.ObservedAt:u}")</p>
+    </section>
+
+    <section class="cc-card cc-metric" aria-labelledby="hardware-heading">
+        <p class="cc-card-label">Storage hardware</p>
+        <h2 id="hardware-heading">@Model.AliveHostCount of @Model.HostCount machines online</h2>
+        <p>@Model.DiskCount disks · @Model.StandbyDiskCount asleep</p>
+        <p class="cc-freshness">@Model.RunningStorageServiceCount of @Model.StorageServiceCount storage services running</p>
+    </section>
+</div>

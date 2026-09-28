@@ -1,51 +1,146 @@
 using ColdCeph.Core.Features.StoragePlane.DTOs;
+using ColdCeph.Core.Features.Devices.DTOs;
+using ColdCeph.Core.Features.Hosts.DTOs;
+using ColdCeph.Core.Features.Integrity.DTOs;
+using ColdCeph.Core.Features.Osds.DTOs;
+using ColdCeph.Core.Features.S3.DTOs;
 
 namespace ColdCeph.Control.Features.StoragePlane.ViewModels;
 
 public sealed class StoragePlanePageViewModel
 {
     public required StoragePlaneSnapshot Snapshot { get; init; }
+    public required IntegritySnapshot Integrity { get; init; }
+    public required S3PendingWorkDto Work { get; init; }
+    public required int HostCount { get; init; }
+    public required int AliveHostCount { get; init; }
+    public required int PendingHostCount { get; init; }
+    public required int DiskCount { get; init; }
+    public required int StandbyDiskCount { get; init; }
+    public required int StorageServiceCount { get; init; }
+    public required int RunningStorageServiceCount { get; init; }
 
-    public bool CanWake => Snapshot.State == StoragePlaneState.Cold;
+    public bool SetupComplete => HostCount > 0
+                                 && AliveHostCount == HostCount
+                                 && PendingHostCount == 0
+                                 && DiskCount > 0
+                                 && StorageServiceCount > 0;
+
+    public bool CanWake => SetupComplete
+                           && Snapshot.State switch
+                           {
+                               StoragePlaneState.Cold => true,
+                               StoragePlaneState.Faulted => !IntegrityDurability.HasFailure(Integrity),
+                               _ => false
+                           };
 
     public bool CanSleep => Snapshot.State == StoragePlaneState.Ready;
 
     public string Headline => Snapshot.State switch
     {
-        StoragePlaneState.Cold => "Disks are parked",
-        StoragePlaneState.Waking => "Waking the data plane",
-        StoragePlaneState.Ready => "Data plane is live",
+        _ when !SetupComplete => "Finish setting up storage",
+        StoragePlaneState.Cold => "Storage is asleep",
+        StoragePlaneState.Waking => "Getting storage ready",
+        StoragePlaneState.Ready => Integrity.Predicates.WriteReady ? "Ready for backups" : "Storage needs attention",
         StoragePlaneState.Quiescing => "Preparing to sleep",
-        StoragePlaneState.Sleeping => "Parking disks",
-        StoragePlaneState.Faulted => "Storage plane is faulted",
+        StoragePlaneState.Sleeping => "Going to sleep",
+        StoragePlaneState.Faulted => "Storage needs attention",
         _ => Snapshot.State.ToString()
     };
 
     public string Guidance => Snapshot.State switch
     {
+        _ when !SetupComplete =>
+            "Connect each storage machine and confirm that its disks and storage services appear.",
         StoragePlaneState.Cold =>
-            "S3 clients wait until you wake the plane. Reload this page when you want a new reading.",
+            ProtectionSummary,
         StoragePlaneState.Waking =>
-            "Disks are spinning up and OSDs are starting. Reload this page when you want a new reading.",
+            "Disks and storage services are starting. Backup requests will continue when storage is ready.",
         StoragePlaneState.Ready =>
-            "S3 is forwarding to RGW. Sleep stops OSD processes, then parks the disks.",
+            Integrity.Predicates.WriteReady
+                ? "Backup clients can read and write now."
+                : "New writes are blocked. Check protection before continuing.",
         StoragePlaneState.Quiescing =>
-            "OSD processes are stopping so disks can sleep. Reload this page when you want a new reading.",
+            "Current activity is finishing before disks are parked.",
         StoragePlaneState.Sleeping =>
-            "Disks are entering standby. Reload this page when you want a new reading.",
+            "Storage services are stopping and disks are entering standby.",
         StoragePlaneState.Faulted =>
-            "Do not wake or sleep from here. Open Integrity and read Ceph's own health first.",
+            IntegrityDurability.HasFailure(Integrity)
+                ? "Automatic transitions have stopped. Check protection for the cause and next action."
+                : "Automatic transitions have stopped. Wake storage to resume now that protection looks clear.",
         _ => string.Empty
     };
 
     public string Tone => Snapshot.State switch
     {
+        _ when !SetupComplete => "busy",
         StoragePlaneState.Ready => "ok",
         StoragePlaneState.Waking or StoragePlaneState.Quiescing or StoragePlaneState.Sleeping => "busy",
         StoragePlaneState.Faulted => "bad",
         _ => "idle"
     };
 
-    public static StoragePlanePageViewModel From(StoragePlaneSnapshot snapshot)
-        => new() { Snapshot = snapshot };
+    public string AvailabilitySummary => Snapshot.State switch
+    {
+        StoragePlaneState.Ready when Integrity.Predicates.WriteReady => "Reads and writes available",
+        StoragePlaneState.Ready => "Reads may be available; writes blocked",
+        StoragePlaneState.Cold => "Asleep",
+        StoragePlaneState.Waking => "Starting",
+        StoragePlaneState.Quiescing or StoragePlaneState.Sleeping => "Stopping",
+        StoragePlaneState.Faulted => "Unavailable",
+        _ => "Unknown"
+    };
+
+    public string ProtectionSummary => Integrity.LastVerifiedCleanAt is { } verified
+        ? $"Protected when last checked {verified:u}"
+        : "Protection has not been verified yet";
+
+    public IReadOnlyList<string> ProtectionProblems => Integrity.Checks
+        .Where(check => check.Classification == HealthClassification.Unexpected)
+        .Select(check => check.Detail)
+        .ToArray();
+
+    public string CapacityUsed => FormatBytes(Integrity.Capacity?.UsedBytes);
+    public string CapacityAvailable => FormatBytes(Integrity.Capacity?.AvailableBytes);
+    public string CapacityTotal => FormatBytes(Integrity.Capacity?.TotalBytes);
+    public int? CapacityPercent => Integrity.Capacity is { TotalBytes: > 0 } capacity
+        ? (int)Math.Round(capacity.UsedBytes * 100d / capacity.TotalBytes)
+        : null;
+
+    public static StoragePlanePageViewModel From(
+        StoragePlaneSnapshot snapshot,
+        IntegritySnapshot integrity,
+        S3PendingWorkDto work,
+        IReadOnlyList<HostDto> hosts,
+        int pendingHosts,
+        IReadOnlyList<DeviceDto> devices,
+        IReadOnlyList<OsdDto> osds)
+        => new()
+        {
+            Snapshot = snapshot,
+            Integrity = integrity,
+            Work = work,
+            HostCount = hosts.Count,
+            AliveHostCount = hosts.Count(host => host.Alive),
+            PendingHostCount = pendingHosts,
+            DiskCount = devices.Count,
+            StandbyDiskCount = devices.Count(device => device.PowerState == DevicePowerState.Standby),
+            StorageServiceCount = osds.Count,
+            RunningStorageServiceCount = osds.Count(osd => osd.ProcessRunning)
+        };
+
+    private static string FormatBytes(long? bytes)
+    {
+        if (bytes is null)
+            return "Not checked";
+        string[] units = ["B", "KB", "MB", "GB", "TB", "PB"];
+        var value = (double)bytes.Value;
+        var unit = 0;
+        while (value >= 1000 && unit < units.Length - 1)
+        {
+            value /= 1000;
+            unit++;
+        }
+        return $"{value:0.#} {units[unit]}";
+    }
 }

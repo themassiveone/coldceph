@@ -154,6 +154,33 @@ public sealed class CephCliQueryProviderTests
         Assert.That(provider.ListOsdMembership(), Is.Empty);
     }
 
+    [Test]
+    public void Status_parses_cluster_capacity()
+    {
+        var runner = new RecordingProcessRunner
+        {
+            Output = """{"pgmap":{"bytes_total":3000,"bytes_used":1000,"bytes_avail":2000}}"""
+        };
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
+
+        var capacity = provider.GetCapacity();
+
+        Assert.That(runner.Commands, Is.EqualTo(new[] { "ceph --format json status" }));
+        Assert.That(capacity.TotalBytes, Is.EqualTo(3000));
+        Assert.That(capacity.UsedBytes, Is.EqualTo(1000));
+        Assert.That(capacity.AvailableBytes, Is.EqualTo(2000));
+    }
+
+    [TestCase("{}")]
+    [TestCase("{\"pgmap\":{\"bytes_total\":-1,\"bytes_used\":0,\"bytes_avail\":0}}")]
+    public void Status_rejects_missing_or_invalid_capacity(string output)
+    {
+        var runner = new RecordingProcessRunner { Output = output };
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
+
+        Assert.That(() => provider.GetCapacity(), Throws.InvalidOperationException);
+    }
+
     private static (CephCliQueryProvider Provider, RecordingProcessRunner Runner, FakeClock Clock) Create(TimeSpan? ttl = null)
     {
         var runner = new RecordingProcessRunner { Output = """{"status":"HEALTH_OK","checks":{}}""" };

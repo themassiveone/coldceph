@@ -21,6 +21,7 @@ public sealed class ClusterHealthTests
             op.EnsureCold(scenario.OperatorPassword);
             op.SeeStoragePlane("Cold");
             op.SeeCephHealthExists();
+            op.SeeOverviewCapacity();
         });
     }
 

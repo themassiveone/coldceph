@@ -8,11 +8,10 @@ public sealed class OperatorPageCatalog
     [
         new("/auth/login", "Login", true),
         new("/", "Storage", false),
-        new("/integrity", "Integrity", false),
         new("/hosts", "Hosts", false),
         new("/osds", "OSDs", false),
         new("/devices", "Devices", false),
-        new("/s3", "S3", false),
+        new("/s3", "Buckets", false),
         new("/operations", "Operations", false)
     ];
 

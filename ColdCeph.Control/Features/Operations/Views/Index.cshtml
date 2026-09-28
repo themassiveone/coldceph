@@ -1,11 +1,11 @@
 @using ColdCeph.Core.Features.Operations.DTOs
 @model IReadOnlyList<OperationRecordDto>
 @{
-    ViewData["Title"] = "Operations";
+    ViewData["Title"] = "Activity";
 }
-<p class="cc-page-kicker">Operations</p>
-<h1>What ran</h1>
-<p class="cc-lead">Wake, sleep, and other controller-owned work. Newest first.</p>
+<p class="cc-page-kicker">Activity</p>
+<h1>Recent activity</h1>
+<p class="cc-lead">Wake, sleep, and other storage changes, newest first.</p>
 <section class="cc-card">
     @if (Model.Count == 0)
     {

@@ -22,6 +22,8 @@ public sealed class OsdsController
         return _service.ListOsds().Select(osd => Overlay(osd, membership)).ToArray();
     }
 
+    public IReadOnlyList<OsdDto> ListObservedOsds() => _service.ListOsds();
+
     public OsdDto? GetOsd(int osdId)
     {
         var osd = _service.GetOsd(osdId);

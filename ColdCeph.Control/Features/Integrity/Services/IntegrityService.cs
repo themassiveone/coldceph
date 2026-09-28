@@ -66,6 +66,16 @@ public sealed class IntegrityService
     private IntegritySnapshot ReadIntegrity()
     {
         var raw = _ceph.GetHealthDetail();
+        ClusterCapacityDto? capacity = null;
+        string? capacityUnavailableReason = null;
+        try
+        {
+            capacity = _ceph.GetCapacity();
+        }
+        catch (Exception exception)
+        {
+            capacityUnavailableReason = exception.Message;
+        }
         var plane = _plane.GetState().State;
         var checks = Classify(raw, plane);
         var predicates = BuildPredicates(checks);
@@ -77,6 +87,8 @@ public sealed class IntegrityService
             Raw = raw,
             Checks = checks,
             Predicates = predicates,
+            Capacity = capacity,
+            CapacityUnavailableReason = capacityUnavailableReason,
             LastVerifiedCleanAt = _repository.GetLastVerifiedCleanAt(),
             LastVerifiedCleanSummary = _repository.GetLastVerifiedCleanSummary(),
             ObservedAt = _clock.UtcNow
@@ -96,6 +108,8 @@ public sealed class IntegrityService
                 Checks = []
             },
             Checks = [],
+            Capacity = null,
+            CapacityUnavailableReason = summary,
             Predicates = new ReadinessPredicates
             {
                 ControlPlaneAvailable = false,
@@ -122,7 +136,7 @@ public sealed class IntegrityService
 
     private static HealthClassification ClassifyOne(string check, StoragePlaneState plane)
     {
-        if (Contains(check, "unfound") || Contains(check, "inconsistent") || Contains(check, "incomplete"))
+        if (IntegrityDurability.IsFailure(check))
             return HealthClassification.Unexpected;
 
         if (Contains(check, "noout"))

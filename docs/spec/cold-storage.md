@@ -584,7 +584,11 @@ Examples:
 - PGs remain incomplete;
 - unfound objects exist.
 
-No automatic sleep transition should proceed from `FAULTED`.
+No automatic sleep transition should proceed from `FAULTED`. A later clean Integrity
+confirmation does not by itself leave `FAULTED`. The operator may Wake (`FAULTED` → `WAKING`)
+when the last confirmation is not a durability failure (unfound objects, inconsistent PGs, or
+incomplete PGs). Ordinary Ceph `HEALTH_WARN` checks such as too-few PGs or `OSD_DOWN` while OSD
+processes already run are not a reason to enter `FAULTED`.
 
 ---
 
@@ -1991,7 +1995,10 @@ POST /v1/devices/{id}/standby
 Operations must be idempotent.
 
 Control does not poll these Node GET lists for inventory. After Allow, the Node POSTs
-`/v1/osds/observed` and `/v1/devices/observed` on Control when local OSD/device state changes.
+`/v1/osds/observed` and `/v1/devices/observed` on enroll, after Control becomes reachable
+again, and when local OSD/device state changes. Control persists the last observations so a
+Control restart does not drop inventory. Allow is a one-time host trust decision and also
+persists.
 
 For example:
 
@@ -2508,14 +2515,15 @@ without rewriting the controller.
 
 Control never polls the monitor.
 
-Inventory (OSD processes, disk identity, power) is pushed by Nodes on enroll and when the
-local snapshot changes. Control stores that history and does not GET Node lists on a timer.
+Inventory (OSD processes, disk identity, power) is pushed by Nodes on enroll, on re-enroll
+after Control was unreachable, and when the local snapshot changes. Control stores that
+history in SQLite and does not GET Node lists on a timer.
 
 Ceph is queried only when an external request needs confirmation, and only once for that
 request:
 
 ```text
-operator Integrity page / `/v1` integrity   health detail, quorum, pg stat (one confirmation)
+operator POST /integrity/check / `/v1` integrity   health detail, quorum, pg stat (one confirmation)
 operator Osds page / `/v1` osds             osd dump overlay of up/in
 S3 admission after StoragePlane is READY    one confirmation, then forward or 503
 Wake/Sleep `noout` mutations                set-group / unset-group when the plane transitions
@@ -2524,8 +2532,8 @@ Wake/Sleep `noout` mutations                set-group / unset-group when the pla
 StoragePlane, Osds, and Devices reconcilers must not invoke the Ceph CLI. They read
 Node-pushed process/device state and the last Integrity snapshot left by a confirmation.
 
-While `COLD`, do not query PGs or OSD data devices. A cold Integrity page may still confirm
-monitor health once.
+While `COLD`, do not query PGs or OSD data devices. A cold `POST /integrity/check` may still
+confirm monitor health once.
 
 Avoid queries that themselves require sleeping data devices.
 
@@ -2592,6 +2600,27 @@ This matters because the controller deliberately performs operations that make C
 ---
 
 # 49. Operator UX Principles
+
+The default UI is an appliance experience for people who need not know Ceph. The StoragePlane-owned
+Overview composes read-only controller queries across the existing slices; it is not a separate
+Dashboard slice and owns no sibling writes. It presents, in order, required action, backup-client
+availability, last verified protection, confirmed capacity, and machine/disk readiness. Loading it
+uses cached Integrity and Node-pushed inventory and never invokes Ceph.
+
+Primary navigation and copy use operator tasks and plain storage language. Protection, capacity,
+and hardware totals live on Overview cards. Raw Ceph health is not a separate operator tab.
+Storage services and disk pages exist for troubleshooting; they are not grouped as Advanced.
+An expected cold `HEALTH_ERR` is not placed in global chrome without classification. Unknown facts
+are labeled “not checked,” observed facts carry their time, and no unknown or historical value is
+presented as current health.
+
+Operator Buckets (`/s3`) is an S3-slice viewer: list buckets, navigate prefixes in the page URL,
+download objects, and upload into the current prefix. When StoragePlane is not `READY`, the
+viewer is greyed and a banner explains why; Wake is offered on that banner when Wake is legal.
+
+Before inventory is ready, Overview is a setup checklist for connected machines, approvals, disks
+and storage services, and the first protection check. Wake is not offered until at least one live
+enrolled host has supplied disk and OSD inventory.
 
 The UI should answer:
 

@@ -35,7 +35,10 @@ public sealed class OsdsReportLoop : BackgroundService
     public void ReportOnce()
     {
         if (_config.ControlEndpoint is null || !_hosts.IsControlEnrolled())
+        {
+            _lastFingerprint = null;
             return;
+        }
 
         try
         {

@@ -8,13 +8,21 @@ public sealed class DevicesService
 {
     private readonly INodeDevicesClient _node;
     private readonly ControlConfig _config;
+    private readonly IDevicesObservationRepository? _repository;
     private readonly Dictionary<string, DeviceDto> _devices = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _hostErrors = new(StringComparer.Ordinal);
 
-    public DevicesService(INodeDevicesClient node, ControlConfig config)
+    public DevicesService(INodeDevicesClient node, ControlConfig config, IDevicesObservationRepository? repository = null)
     {
         _node = node;
         _config = config;
+        _repository = repository;
+        if (repository is null)
+            return;
+        foreach (var device in repository.LoadDevices())
+            _devices[device.DeviceId] = device;
+        foreach (var error in repository.LoadErrors())
+            _hostErrors[error.Key] = error.Value;
     }
 
     public IReadOnlyList<DeviceDto> ListDevices() => _devices.Values.ToArray();
@@ -28,7 +36,11 @@ public sealed class DevicesService
     public bool IsEveryDeviceStandby()
         => _devices.Values.All(device => device.PowerState == DevicePowerState.Standby);
 
-    public void Seed(DeviceDto device) => _devices[device.DeviceId] = device;
+    public void Seed(DeviceDto device)
+    {
+        _devices[device.DeviceId] = device;
+        Persist();
+    }
 
     public void ApplyObserved(HostDevicesObservationDto observation)
     {
@@ -42,6 +54,7 @@ public sealed class DevicesService
             _hostErrors.Remove(observation.HostId);
         else
             _hostErrors[observation.HostId] = observation.Error;
+        Persist();
     }
 
     public void WakeAll(string hostId, Uri nodeEndpoint, string operationId)
@@ -67,5 +80,9 @@ public sealed class DevicesService
                 : _node.Standby(nodeEndpoint, request);
             _devices[device.DeviceId] = device with { PowerState = result.PowerState };
         }
+        Persist();
     }
+
+    private void Persist()
+        => _repository?.Save(_devices.Values.ToArray(), _hostErrors);
 }

@@ -49,6 +49,22 @@ public sealed class DevicesReportLoopTests
     }
 
     [Test]
+    public void ReportOnce_resends_the_same_snapshot_after_reenroll()
+    {
+        var (loop, reporter, _, hosts) = Create();
+        hosts.NoteJoinStatus(200);
+        loop.ReportOnce();
+
+        hosts.NoteJoinStatus(202);
+        loop.ReportOnce();
+        hosts.NoteJoinStatus(200);
+        loop.ReportOnce();
+
+        Assert.That(reporter.Sent, Has.Count.EqualTo(2));
+        Assert.That(reporter.Sent[1].Devices.Select(device => device.DeviceId), Does.Contain("d0"));
+    }
+
+    [Test]
     public void ReportOnce_sends_again_after_wake()
     {
         var (loop, reporter, devices, hosts) = Create();

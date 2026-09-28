@@ -60,7 +60,7 @@ public sealed class StoragePlaneReconciler : BackgroundService
         var pending = _s3.GetPendingWork();
         var operationId = snapshot.ActiveOperationId ?? OperationIdRules.Create().Value;
 
-        if (HasUnexpectedIntegrity(integrity) && snapshot.State != StoragePlaneState.Faulted)
+        if (IntegrityDurability.HasFailure(integrity) && snapshot.State != StoragePlaneState.Faulted)
         {
             _plane.EnterFaulted("unexpected-integrity");
             return;
@@ -93,9 +93,6 @@ public sealed class StoragePlaneReconciler : BackgroundService
             && _devices.IsEveryDeviceStandby())
             _plane.EnterCold(operationId);
     }
-
-    private static bool HasUnexpectedIntegrity(IntegritySnapshot integrity)
-        => integrity.Checks.Any(check => check.Classification == HealthClassification.Unexpected);
 
     private StoragePlaneState InferReality()
     {

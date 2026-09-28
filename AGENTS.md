@@ -72,9 +72,9 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 
 | Slice | User question | Owns writes | Siblings may read |
 |-------|---------------|-------------|-------------------|
-| **S3** | Can clients GET/PUT objects through the cold endpoint? | In-flight/queued requests, proxy sessions, wait vs 503 | Pending work, active count, last activity |
+| **S3** | Can clients GET/PUT objects through the cold endpoint? What objects are in a bucket? | In-flight/queued requests, proxy sessions, wait vs 503, operator browse upload | Pending work, active count, last activity |
 | **StoragePlane** | Is the data plane COLD, WAKING, READY, …? Should it sleep? | Operational state, transition lease, idle policy, controller-owned `noout` records | State, readiness, lease holder |
-| **Integrity** | Is my data known safe? What does Ceph say vs expected-cold? | Last verified-clean snapshot, classified health checks, PG/pool durability view | Integrity DTO, raw Ceph health fields |
+| **Integrity** | Is my data known safe? What does Ceph say vs expected-cold? | Last verified-clean snapshot, classified health checks, confirmed cluster capacity, PG/pool durability view | Integrity DTO, raw Ceph health fields, last capacity reading |
 | **Osds** | Which OSDs exist, up/in, started/stopped? | Observed inventory from Nodes, start/stop commands to nodes | OSD inventory DTOs |
 | **Devices** | Which HDDs, identity, power state? | Observed inventory from Nodes, wake/standby commands to nodes | Device inventory DTOs |
 | **Hosts** | Which machines, node liveness? | Join requests, operator allow/deny, enrolled host liveness | Host DTOs, pending/blocked joins, node endpoints |
@@ -85,9 +85,9 @@ Production files live under `Features/`, `Shared/`, `Composition/`, or an approv
 
 | Slice | User/maintainer meaning | Owns writes |
 |-------|-------------------------|-------------|
-| **Osds** | Local OSD processes | start/stop/isRunning; push observations to Control after enroll and when the local snapshot changes |
-| **Devices** | Local physical drives | identity, wake/standby; refuse standby while the mapped OSD still runs; push observations with Osds |
-| **Hosts** | This node’s identity and liveness | `/v1/status`; join request to Control when `COLDCEPH_CONTROL_ENDPOINT` is set; 200 means enrolled for inventory push |
+| **Osds** | Local OSD processes | start/stop/isRunning; push observations to Control after enroll, after re-enroll, and when the local snapshot changes |
+| **Devices** | Local physical drives | identity, wake/standby; refuse standby while the mapped OSD still runs; push observations with Osds after enroll, re-enroll, and local change |
+| **Hosts** | This node’s identity and liveness | `/v1/status`; join request to Control when `COLDCEPH_CONTROL_ENDPOINT` is set; 200 means enrolled for inventory push; unreachable Control clears enrollment so the next 200 re-pushes inventory |
 
 ## Core (`ColdCeph.Core`)
 
@@ -97,9 +97,10 @@ Same slice names, **DTOs and IDs only**. No services that mutate. StoragePlane s
 # MVP State Machine and Safety
 
 States: `COLD → WAKING → READY → QUIESCING → SLEEPING → COLD`, plus `FAULTED`. `WAKING` ends
-when Nodes report every OSD process running. Unexpected integrity → `FAULTED` after an
-operator/`/v1`/S3 confirmation, not a timer. `PEERING`, `MAINTENANCE`, and `DEGRADED` are
-later-release states.
+when Nodes report every OSD process running. Unexpected integrity (unfound objects, inconsistent
+or incomplete PGs) → `FAULTED` after an operator/`/v1`/S3 confirmation, not a timer. Ordinary
+Ceph `HEALTH_WARN` checks such as too-few PGs or `OSD_DOWN` while Node processes already run are
+not a reason to `FAULT`. `PEERING`, `MAINTENANCE`, and `DEGRADED` are later-release states.
 
 Invariants:
 
@@ -109,11 +110,15 @@ Invariants:
 - Clear only flags StoragePlane recorded as controller-owned.
 - Startup: Nodes push OSD/device snapshots after Allow; Control overlays Ceph `osd dump` up/in
   at Osds list time (once per operator/`/v1` GET). Persisted `COLD` is not trusted. Control
-  reconcilers do not GET Node inventory and do not invoke the Ceph CLI.
+  reconcilers do not GET Node inventory and do not invoke the Ceph CLI. Enrolled hosts, pending
+  and blocked joins, and the last Node-pushed OSD/device observations persist in SQLite so a
+  Control restart does not require Allow again and does not drop inventory.
 - One StoragePlane transition lease; many S3 requests create one pending-work signal, one wake.
 - Writes fail closed unless Integrity reports `write_ready`; cold `HEALTH_ERR` is classified
 expected, not hidden. Controller-owned scoped `noout` (OSDMAP_FLAGS) is expected, not a
-reason to `FAULT`.
+reason to `FAULT`. Ordinary `HEALTH_WARN` checks are not a reason to `FAULT`.
+- `FAULTED` does not leave automatically when a later confirmation is clean. The operator may
+Wake (`FAULTED` → `WAKING`) when the last confirmation is not a durability failure.
 
 Persistence: SQLite under `/var/lib/coldceph` behind the owning slice’s repositories. Never on
 sleeping HDDs.
@@ -132,14 +137,24 @@ Classic MVC, no Blazor/SPA/HTMX. Cookie operator auth in **Auth** (appliance pas
 multi-tenant Identity). Antiforgery on POSTs. `/v1` returns 401/403 without a login redirect.
 Browser GETs to operator HTML pages send the operator to `/auth/login`. Request-time HTML.
 Pages must not auto-refresh; the operator reloads for a new reading. Wake and Sleep are
-StoragePlane POSTs and only appear when that transition is legal (Wake from `COLD`, Sleep
-from `READY`).
+StoragePlane POSTs and only appear when that transition is legal (Wake from `COLD`, Wake from
+`FAULTED` when the last confirmation is not a durability failure, Sleep from `READY`).
 
 A Razor `ViewLocationExpander` keeps views under `Features/<Slice>/Views/`. Each slice Views
 folder includes `_ViewStart.cshtml` so Razor applies `_Layout` (it discovers ViewStart from the
 view path, not from `Shared/Views`). Layout chrome reads StoragePlane + Integrity controllers
-**only when the operator is authenticated**, so operational state and raw Ceph health stay
-distinct without making login invoke the Ceph CLI.
+**only when the operator is authenticated**. It shows the classified protection conclusion rather
+than an unexplained raw cold `HEALTH_ERR`. Login and layout chrome never invoke the Ceph CLI.
+
+`/` is a StoragePlane-owned, read-only appliance Overview. It composes query methods from sibling
+controllers to show setup readiness, backup availability, last verified protection, the last
+confirmed capacity reading, and hardware totals. It uses Node-pushed inventory and Integrity’s
+cached snapshot; it must not cause an OSD overlay or Ceph command. Wake is not offered until at
+least one live enrolled host plus disk and OSD observations exist. Primary copy uses plain storage
+language. Unknown facts are explicitly dated and never presented as healthy. There is no Integrity
+HTML page and no Advanced disclosures; protection is the Overview card, refreshed by
+`POST /integrity/check`. Operator navigation is Overview, Storage, Buckets, Activity, plus
+storage-service and disk pages.
 
 Wake from the UI is `POST` on **StoragePlane**’s controller (protocol entry).
 
@@ -154,6 +169,14 @@ holds the connection until StoragePlane is `READY` (Node-pushed processes), then
 call while not `READY`. No unlimited local buffering.
 `Expect: 100-continue` where possible.
 
+Operator Buckets (`/s3`, S3 slice SSR) is a small path-style viewer against `COLDCEPH_RGW` using
+`COLDCEPH_S3_ACCESS_KEY` / `COLDCEPH_S3_SECRET_KEY` (defaults `coldceph` / `coldcephsecret`).
+List buckets, click into a bucket, folders change the page URL, objects show Download, and an
+Upload form is available inside a bucket. S3 does not call `StoragePlane.Wake()`; the greyed
+page posts the StoragePlane `/wake` form when that transition is legal. Browse talks to RGW only
+when StoragePlane is `READY`; it does not use the cold `:7480` wait-mode listener and does not
+query Ceph.
+
 # Testing
 
 - NEVER run `dotnet` commands directly on `.csproj` files. ALWAYS use solution-wide `dotnet` commands.
@@ -167,15 +190,15 @@ call while not `READY`. No unlimited local buffering.
 - Slice **Controller/**: sibling-visible queries; commands only from that slice’s protocol tests.
 - **HTTP/**: MVC and `/v1` on the owning slice.
 - **Provider/**: ceph CLI, systemd, disk identity, proxy command shapes.
-- Layout chrome queries StoragePlane + Integrity **only after authentication**. Login and
-  anonymous 401 pages must not invoke the Ceph CLI. Authenticated chrome reads Integrity’s
-  last raw-health snapshot so HTML does not wait on the Ceph CLI. The Integrity page still
-  loads the full classified snapshot **once** per reload.
+- Layout chrome and Overview query StoragePlane + Integrity **only after authentication**. Login and
+  anonymous 401 pages must not invoke the Ceph CLI. Authenticated chrome and Overview read
+  Integrity’s last snapshot so HTML does not wait on the Ceph CLI. `POST /integrity/check` (and
+  Integrity `/v1`) load a live classified snapshot and capacity **once** per request.
 - Control **never polls** Ceph. The monitor is queried only when an external request needs
-  confirmation, and only once per request: Integrity HTML/`/v1`, S3 admission after `READY`,
-  and Osds `osd dump` overlay on Osds list GET. Historical OSD/device inventory comes from
-  Node push on enroll and local change. Reconcilers read Node-pushed state and the last
-  Integrity snapshot; they do not invoke the Ceph CLI.
+  confirmation, and only once per request: operator `POST /integrity/check`, Integrity `/v1`,
+  S3 admission after `READY`, and Osds `osd dump` overlay on Osds list GET. Historical OSD/device
+  inventory comes from Node push on enroll and local change. Reconcilers read Node-pushed state
+  and the last Integrity snapshot; they do not invoke the Ceph CLI.
 - Ceph CLI is **single-flight** inside Integrity’s query provider so one confirmation’s
   `health detail` / quorum / `pg stat` commands do not stack duplicate `health detail`
   processes. `ContainsHealth` reuses that JSON; it must not spawn another process.
@@ -183,10 +206,11 @@ call while not `READY`. No unlimited local buffering.
 - StoragePlane, Osds, and Devices reconcilers catch provider exceptions per tick so a
   failed node call cannot stop the loop. The next tick retries.
 - Nodes push `POST /v1/osds/observed` and `POST /v1/devices/observed` (node token, enrolled
-  host only) on enroll and when the local snapshot changes. Node OSD/device snapshots are
-  mutated under a lock so report loops and node HTTP cannot tear the dictionary. Integrity overlays Ceph `osd dump`
-  up/in once per Osds list GET. Osds/Devices reconcilers issue WAKING start/wake and SLEEPING
-  stop/standby only.
+  host only) on enroll, on re-enroll after Control was unreachable, and when the local snapshot
+  changes. An unchanged snapshot is not resent while enrollment stays continuous. Node OSD/device
+  snapshots are mutated under a lock so report loops and node HTTP cannot tear the dictionary.
+  Integrity overlays Ceph `osd dump` up/in once per Osds list GET. Osds/Devices reconcilers
+  issue WAKING start/wake and SLEEPING stop/standby only.
 - `ColdCeph.E2E.Tests`: thin Xcepto only. A project `[SetUpFixture]` starts an assembly-wide
   Testcontainers Ceph demo (`CephCluster`) plus in-process Control and Node **once** and
   reuses that environment. Tests do not start their own stack and must not shell
@@ -257,7 +281,8 @@ Devices reconcilers visit **every enrolled host** for start/stop/wake/standby, n
 They do not poll Node GET lists. Control runs from the IDE (`Control` launch profile or
 `./cc-debug up`). Nodes join with `POST /v1/hosts/join` (no join token) and
 `X-ColdCeph-Node-Endpoint`. Hosts keeps each request **pending** until the operator Allows it on
-`/hosts`. Deny blocks that node until Allow. Credential and port defaults live in `.env.example`
+`/hosts`. That Allow is a one-time trust decision and survives Control restart. Deny blocks that
+node until Allow. Credential and port defaults live in `.env.example`
 and in the Control/Node `Properties/launchSettings.json` profiles. Every default is overridable
 with the same env var name. Optional `COLDCEPH_NODE_ENDPOINT` is configured discovery: Control
 seeds that host as already enrolled. `COLDCEPH_NODE_TOKEN` is only Control→Node command auth, not
