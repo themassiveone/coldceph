@@ -644,8 +644,13 @@ for being unfamiliar while an unrecognised error still fails closed.
   daemon. `CephAdapter.SeeConfirmationShapeMatchesFixtures` asserts the live output parses to the
   same shape, which catches schema drift but is not the same as re-capturing. The corpus README says
   how.
-- **None of the E2E changes have been run.** No Docker daemon was available. They compile; the
-  journeys themselves are unverified.
+- **E2E is not green yet, and cannot be verified locally.** quay.io is blocked by this
+  environment's egress policy even with a Docker daemon running, so the Ceph image cannot be
+  pulled and every E2E change is reasoned from CI logs. The harness has been made
+  self-diagnosing for that reason: a failed setup wait attaches the container log and
+  `ceph -s` / `osd tree` / `health detail`, and a refused S3 request names the readiness
+  predicate that refused rather than just reporting 503. Iterate by reading what the run says,
+  not by guessing.
 - **Operations' HTTP surface and the Debug CLI have no coverage.** Surfaced by the new coverage
   summary, out of scope here.
 - **No mutation testing.** §6.6 recommended trialling Stryker.NET on `Providers/` and
