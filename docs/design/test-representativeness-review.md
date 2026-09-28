@@ -459,14 +459,18 @@ outward, to the boundary with the external system.**
 The highest-value change in this document.
 
 1. Capture a corpus of **real** `ceph --format json` output — `health detail`, `status`,
-   `quorum_status`, `pg stat`, `osd dump` — in `Support/CephFixtures/`, for at least: healthy;
+   `quorum_status`, `osd dump` — in `Support/CephFixtures/`, for at least: healthy;
    cold with all OSDs down; mid-wake with PGs peering/incomplete; scoped `noout` set;
    `OBJECT_UNFOUND`; `PG_DAMAGED`; nearfull; no quorum; `ceph` exiting non-zero with stderr.
    Harvest them from the compose cluster with `cc-debug`, and commit them. Treat any health
    string not present in that corpus as inadmissible in a test.
 2. Replace `RecordingProcessRunner`'s single `Output` with a **per-command** map, so
-   `quorum_status` and `pg stat` stop being answered with health JSON. Have it model non-zero
+   `quorum_status` and `status` stop being answered with health JSON. Have it model non-zero
    exit with stderr, and empty output.
+
+   *This recommendation originally listed `pg stat` as the source of PG states, because that is what
+   the provider called. It is the wrong command — its JSON does not carry `pgs_by_state`. §8 records
+   what that cost and what caught it. PG states and capacity both come out of `status`'s `pgmap`.*
 3. Drive `CephCliQueryProviderTests` from the corpus, asserting return **values** — including the
    first tests for `GetQuorumAvailable`, `GetPgsActive`, `GetPgsClean`.
 4. Keep `FakeCephQueryProvider` for the classifier's own tests, but **derive** it from a raw
@@ -613,9 +617,16 @@ Nine of the ten are adapters to something outside the process. That is the whole
 | 6.6 | Gates measured file layout only | `ProviderCoverage` rules; coverage summary and failure artifacts in CI | The rules found `RgwS3Client` untested on their first run |
 | new | `RgwS3Client` (hand-rolled SigV4) untested; signed path re-canonicalised before sending | Clock injected; path preserved exactly | 25 tests asserting the signature depends on each element it covers |
 | new | `/v1` surface almost entirely unexecuted | — | StoragePlane and Integrity `/v1` now tested |
+| new | PG states read from `pg stat`, whose JSON does not carry `pgs_by_state` where the provider looked — so `read_ready`, `write_ready` and `sleep_safe` were **all false on a healthy `HEALTH_OK` cluster**, with nothing in the health text to explain it | States now come from `status`'s `pgmap`, the object capacity was already being read from | `CephAdapter.SeePgStatesParsed` against the live cluster. No fixture could have caught this: the fixtures modelled the command the provider was wrong about |
 
-Unit tests went from 284 to 590. Two of the fixes were mutation-checked against the old code rather
-than assumed.
+Unit tests went from 284 to 600, and all 13 E2E journeys pass against the unmuted Testcontainers
+cluster. Two of the fixes were mutation-checked against the old code rather than assumed: the
+process-runner tests hang the run against the old implementation, and the concurrency tests fail
+without the locks.
+
+Line coverage is 6066/7446 (81.5%) across 157 production files, with 23 files no test executes.
+That list is printed by every unit run, so it is a number that can be argued with rather than a
+percentage that can be gamed.
 
 ### Changed on reflection
 
@@ -644,13 +655,16 @@ for being unfamiliar while an unrecognised error still fails closed.
   daemon. `CephAdapter.SeeConfirmationShapeMatchesFixtures` asserts the live output parses to the
   same shape, which catches schema drift but is not the same as re-capturing. The corpus README says
   how.
-- **E2E is not green yet, and cannot be verified locally.** quay.io is blocked by this
-  environment's egress policy even with a Docker daemon running, so the Ceph image cannot be
-  pulled and every E2E change is reasoned from CI logs. The harness has been made
-  self-diagnosing for that reason: a failed setup wait attaches the container log and
-  `ceph -s` / `osd tree` / `health detail`, and a refused S3 request names the readiness
-  predicate that refused rather than just reporting 503. Iterate by reading what the run says,
-  not by guessing.
+- **E2E cannot be verified locally in this environment.** quay.io is blocked by the egress policy
+  even with a Docker daemon running, so the Ceph image cannot be pulled and every E2E change had to
+  be reasoned from CI logs — six runs to converge. The harness was made self-diagnosing for that
+  reason: a failed setup wait attaches the container log and `ceph -s` / `osd tree` /
+  `health detail`, a refused S3 request names the readiness predicate that refused rather than just
+  reporting 503, and `.github/scripts/trx-failures.js` prints failed test names and messages at the
+  *end* of the job log, where the log API can reach them. Anyone iterating on E2E from inside a
+  sandbox will need those; anyone with a local Docker daemon should run it locally instead, where
+  the loop is seconds rather than minutes.
+
 - **Operations' HTTP surface and the Debug CLI have no coverage.** Surfaced by the new coverage
   summary, out of scope here.
 - **No mutation testing.** §6.6 recommended trialling Stryker.NET on `Providers/` and
