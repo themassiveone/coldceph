@@ -60,7 +60,7 @@ public sealed class StoragePlanePagesControllerTests
         Assert.That(model.CanWake, Is.True);
         Assert.That(model.CanSleep, Is.False);
         Assert.That(model.Guidance, Does.Contain("Wake storage to resume"));
-        Assert.That(model.Guidance, Does.Not.Contain("Review Data protection"));
+        Assert.That(model.Guidance, Does.Not.Contain("Check protection for the cause"));
     }
 
     [Test]
@@ -69,7 +69,7 @@ public sealed class StoragePlanePagesControllerTests
         var model = Model(StoragePlaneState.Faulted, durabilityFailure: true);
 
         Assert.That(model.CanWake, Is.False);
-        Assert.That(model.Guidance, Does.Contain("Review Data protection"));
+        Assert.That(model.Guidance, Does.Contain("Check protection for the cause"));
         Assert.That(model.Guidance, Does.Not.Contain("Wake storage to resume"));
     }
 

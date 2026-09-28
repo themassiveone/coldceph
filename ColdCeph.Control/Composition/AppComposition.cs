@@ -65,7 +65,9 @@ public static class AppComposition
 
         builder.Services.AddSingleton<IRequestLedger, MemoryRequestLedger>();
         builder.Services.AddSingleton<IRgwProxy, StreamingRgwProxy>();
+        builder.Services.AddSingleton<IRgwObjectStore, RgwS3Client>();
         builder.Services.AddSingleton<S3Service>();
+        builder.Services.AddSingleton<S3BrowseService>();
         builder.Services.AddSingleton<S3Controller>();
         builder.Services.AddSingleton<S3GatewayController>();
 

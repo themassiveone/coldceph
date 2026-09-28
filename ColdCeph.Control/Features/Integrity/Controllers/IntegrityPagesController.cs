@@ -14,5 +14,23 @@ public sealed class IntegrityPagesController : Controller
     }
 
     [HttpGet("/integrity")]
-    public IActionResult Index() => View("Index", _integrity.GetIntegrity());
+    public IActionResult Index() => Redirect("/");
+
+    [HttpPost("/integrity/check")]
+    [ValidateAntiForgeryToken]
+    public IActionResult Check(string? returnUrl)
+    {
+        _integrity.GetIntegrity();
+        return Redirect(SafeLocalUrl(returnUrl));
+    }
+
+    private static string SafeLocalUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl)
+            || !returnUrl.StartsWith("/", StringComparison.Ordinal)
+            || returnUrl.StartsWith("//", StringComparison.Ordinal)
+            || returnUrl.Contains('\\'))
+            return "/";
+        return returnUrl;
+    }
 }

@@ -14,6 +14,8 @@
         "COLDCEPH_CEPH_CONTAINER": "coldceph-mon",
         "COLDCEPH_OPERATOR_PASSWORD": "changeme",
         "COLDCEPH_NODE_TOKEN": "changeme",
+        "COLDCEPH_S3_ACCESS_KEY": "coldceph",
+        "COLDCEPH_S3_SECRET_KEY": "coldcephsecret",
         "COLDCEPH_NODE_HOST_ID": "dev"
       }
     }

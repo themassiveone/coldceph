@@ -59,14 +59,14 @@ public sealed class StoragePlanePageViewModel
         StoragePlaneState.Ready =>
             Integrity.Predicates.WriteReady
                 ? "Backup clients can read and write now."
-                : "New writes are blocked. Review Data protection before continuing.",
+                : "New writes are blocked. Check protection before continuing.",
         StoragePlaneState.Quiescing =>
             "Current activity is finishing before disks are parked.",
         StoragePlaneState.Sleeping =>
             "Storage services are stopping and disks are entering standby.",
         StoragePlaneState.Faulted =>
             IntegrityDurability.HasFailure(Integrity)
-                ? "Automatic transitions have stopped. Review Data protection for the cause and next action."
+                ? "Automatic transitions have stopped. Check protection for the cause and next action."
                 : "Automatic transitions have stopped. Wake storage to resume now that protection looks clear.",
         _ => string.Empty
     };
@@ -94,6 +94,11 @@ public sealed class StoragePlanePageViewModel
     public string ProtectionSummary => Integrity.LastVerifiedCleanAt is { } verified
         ? $"Protected when last checked {verified:u}"
         : "Protection has not been verified yet";
+
+    public IReadOnlyList<string> ProtectionProblems => Integrity.Checks
+        .Where(check => check.Classification == HealthClassification.Unexpected)
+        .Select(check => check.Detail)
+        .ToArray();
 
     public string CapacityUsed => FormatBytes(Integrity.Capacity?.UsedBytes);
     public string CapacityAvailable => FormatBytes(Integrity.Capacity?.AvailableBytes);

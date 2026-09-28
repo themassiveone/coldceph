@@ -2523,7 +2523,7 @@ Ceph is queried only when an external request needs confirmation, and only once 
 request:
 
 ```text
-operator Integrity page / `/v1` integrity   health detail, quorum, pg stat (one confirmation)
+operator POST /integrity/check / `/v1` integrity   health detail, quorum, pg stat (one confirmation)
 operator Osds page / `/v1` osds             osd dump overlay of up/in
 S3 admission after StoragePlane is READY    one confirmation, then forward or 503
 Wake/Sleep `noout` mutations                set-group / unset-group when the plane transitions
@@ -2532,8 +2532,8 @@ Wake/Sleep `noout` mutations                set-group / unset-group when the pla
 StoragePlane, Osds, and Devices reconcilers must not invoke the Ceph CLI. They read
 Node-pushed process/device state and the last Integrity snapshot left by a confirmation.
 
-While `COLD`, do not query PGs or OSD data devices. A cold Integrity page may still confirm
-monitor health once.
+While `COLD`, do not query PGs or OSD data devices. A cold `POST /integrity/check` may still
+confirm monitor health once.
 
 Avoid queries that themselves require sleeping data devices.
 
@@ -2607,11 +2607,16 @@ Dashboard slice and owns no sibling writes. It presents, in order, required acti
 availability, last verified protection, confirmed capacity, and machine/disk readiness. Loading it
 uses cached Integrity and Node-pushed inventory and never invokes Ceph.
 
-Primary navigation and copy use operator tasks and plain storage language. Raw Ceph health, OSD
-terms, device identifiers, and transition journal fields remain available through advanced details.
+Primary navigation and copy use operator tasks and plain storage language. Protection, capacity,
+and hardware totals live on Overview cards. Raw Ceph health is not a separate operator tab.
+Storage services and disk pages exist for troubleshooting; they are not grouped as Advanced.
 An expected cold `HEALTH_ERR` is not placed in global chrome without classification. Unknown facts
 are labeled “not checked,” observed facts carry their time, and no unknown or historical value is
 presented as current health.
+
+Operator Buckets (`/s3`) is an S3-slice viewer: list buckets, navigate prefixes in the page URL,
+download objects, and upload into the current prefix. When StoragePlane is not `READY`, the
+viewer is greyed and a banner explains why; Wake is offered on that banner when Wake is legal.
 
 Before inventory is ready, Overview is a setup checklist for connected machines, approvals, disks
 and storage services, and the first protection check. Wake is not offered until at least one live

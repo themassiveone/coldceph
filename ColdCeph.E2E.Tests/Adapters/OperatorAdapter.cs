@@ -164,14 +164,14 @@ public sealed class OperatorAdapter : XceptoAdapter
     {
         AddStep(new ExpectationStepState("raw Ceph health is reported", async () =>
         {
-            var response = await _client.GetAsync(new Uri(_baseUrl, "/integrity"));
-            var html = await response.Content.ReadAsStringAsync();
-            return response.IsSuccessStatusCode
-                   && html.Contains("Raw Ceph health:", StringComparison.Ordinal)
-                   && !html.Contains("UNAVAILABLE", StringComparison.Ordinal)
+            var html = await GetHomeHtmlAsync();
+            await PostFormAsync("/integrity/check", html);
+            html = await GetHomeHtmlAsync();
+            return !html.Contains("UNAVAILABLE", StringComparison.Ordinal)
+                   && !html.Contains("No capacity reading yet", StringComparison.Ordinal)
                    && (html.Contains("HEALTH_OK", StringComparison.Ordinal)
-                       || html.Contains("HEALTH_WARN", StringComparison.Ordinal)
-                       || html.Contains("HEALTH_ERR", StringComparison.Ordinal));
+                       || html.Contains("Protected when last checked", StringComparison.Ordinal)
+                       || html.Contains("used of", StringComparison.Ordinal));
         }));
     }
 

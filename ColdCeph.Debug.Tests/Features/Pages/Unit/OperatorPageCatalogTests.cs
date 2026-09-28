@@ -13,7 +13,9 @@ public sealed class OperatorPageCatalogTests
         Assert.That(catalog.All.Select(page => page.Path), Does.Contain("/"));
         Assert.That(catalog.All.Select(page => page.Path), Does.Contain("/hosts"));
         Assert.That(catalog.All.Select(page => page.Path), Does.Contain("/auth/login"));
-        Assert.That(catalog.Resolve("/integrity").Name, Is.EqualTo("Integrity"));
+        Assert.That(catalog.All.Select(page => page.Path), Does.Contain("/s3"));
+        Assert.That(catalog.Resolve("/s3").Name, Is.EqualTo("Buckets"));
+        Assert.That(() => catalog.Resolve("/integrity"), Throws.ArgumentException);
     }
 
     [Test]

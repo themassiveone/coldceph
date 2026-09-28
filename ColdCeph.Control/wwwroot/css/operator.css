@@ -254,6 +254,44 @@ h1 {
 .cc-steps li.is-done::before { content: "✓"; color: var(--cc-ok); }
 .cc-steps span { color: var(--cc-muted); font-size: 0.82rem; }
 
+.cc-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1.1rem;
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-border);
+  border-radius: 0.75rem;
+}
+.cc-banner p { margin: 0; max-width: 42rem; }
+.cc-banner-busy { border-color: color-mix(in srgb, var(--cc-busy) 55%, var(--cc-border)); }
+.cc-banner-idle { border-color: var(--cc-border-strong); }
+
+.cc-browse.is-disabled {
+  opacity: 0.42;
+  filter: grayscale(1);
+  pointer-events: none;
+  user-select: none;
+}
+
+.cc-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  color: var(--cc-muted);
+}
+
+.cc-upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+}
+
 .cc-details summary { cursor: pointer; color: var(--cc-secondary); font-weight: 600; }
 .cc-details[open] summary { margin-bottom: 1rem; }
 

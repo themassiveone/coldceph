@@ -95,7 +95,7 @@ public sealed class StoragePlanePagesHttpTests
         using var factory = new Support.ControlAppFactory();
         ConfigureStorage(factory);
         using var client = await Support.OperatorClient.SignedIn(factory);
-        _ = await client.GetStringAsync("/integrity");
+        _ = await Support.OperatorClient.Post(client, "/integrity/check");
 
         var html = await client.GetStringAsync("/");
 
@@ -103,6 +103,8 @@ public sealed class StoragePlanePagesHttpTests
         Assert.That(html, Does.Contain("1 GB used of 3 GB"));
         Assert.That(html, Does.Contain("Protected when last checked"));
         Assert.That(html, Does.Contain("action=\"/wake\""));
+        Assert.That(html, Does.Not.Contain("Advanced transition details"));
+        Assert.That(html, Does.Not.Contain("href=\"/integrity\""));
         Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(1));
         Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(1));
         Assert.That(factory.Ceph.MembershipCalls, Is.EqualTo(0));
@@ -116,7 +118,7 @@ public sealed class StoragePlanePagesHttpTests
         factory.Services.GetRequiredService<StoragePlaneService>()
             .EnterFaulted("unexpected-integrity");
         using var client = await Support.OperatorClient.SignedIn(factory);
-        _ = await client.GetStringAsync("/integrity");
+        _ = await Support.OperatorClient.Post(client, "/integrity/check");
 
         var html = await client.GetStringAsync("/");
 

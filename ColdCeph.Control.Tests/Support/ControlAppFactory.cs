@@ -1,4 +1,5 @@
 using ColdCeph.Control.Features.Integrity.Interfaces;
+using ColdCeph.Control.Features.S3.Interfaces;
 using ColdCeph.Control.Features.StoragePlane.Interfaces;
 using ColdCeph.Control.Shared;
 using ColdCeph.Control.Tests.Fake;
@@ -13,6 +14,7 @@ public sealed class ControlAppFactory : WebApplicationFactory<Program>
 {
     private readonly string _dataDir = Path.Join(Path.GetTempPath(), "coldceph-tests", Guid.NewGuid().ToString("N"));
     public FakeCephQueryProvider Ceph { get; } = new();
+    public FakeRgwObjectStore Rgw { get; } = new();
 
     public ControlAppFactory()
     {
@@ -39,6 +41,8 @@ public sealed class ControlAppFactory : WebApplicationFactory<Program>
             services.AddSingleton<INooutProvider>(new RecordingNooutProvider());
             services.RemoveAll<IProcessRunner>();
             services.AddSingleton<IProcessRunner>(new RecordingProcessRunner());
+            services.RemoveAll<IRgwObjectStore>();
+            services.AddSingleton<IRgwObjectStore>(Rgw);
         });
     }
 

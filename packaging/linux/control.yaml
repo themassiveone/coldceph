@@ -4,6 +4,9 @@ rgwEndpoint: http://127.0.0.1:80
 dataDirectory: /var/lib/coldceph
 operatorPassword: changeme
 nodeToken: changeme
+s3AccessKey: coldceph
+s3SecretKey: coldcephsecret
+s3Region: us-east-1
 idleTimeoutSeconds: 900
 s3Mode: wait
 retryAfterSeconds: 30

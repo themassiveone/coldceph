@@ -30,7 +30,10 @@
         }
         else if (Model.Snapshot.State == ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Faulted && !Model.CanWake)
         {
-            <a class="cc-btn cc-btn-primary" href="/integrity">Review problem</a>
+            <form method="post" action="/integrity/check">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn cc-btn-primary" type="submit">Check protection</button>
+            </form>
         }
     </div>
 </div>
@@ -54,7 +57,7 @@
             </li>
             <li class="@(Model.Integrity.Raw.Status != "UNAVAILABLE" ? "is-done" : "")">
                 <strong>Check data protection</strong>
-                <span>@(Model.Integrity.Raw.Status != "UNAVAILABLE" ? $"Checked {Model.Integrity.ObservedAt:u}" : "Open Data protection when the cluster is reachable")</span>
+                <span>@(Model.Integrity.Raw.Status != "UNAVAILABLE" ? $"Checked {Model.Integrity.ObservedAt:u}" : "Check protection when the cluster is reachable")</span>
             </li>
         </ol>
     </section>
@@ -74,7 +77,10 @@
         }
         else
         {
-            <p>Open <a href="/integrity">Data protection</a> to check capacity.</p>
+            <form method="post" action="/integrity/check">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn" type="submit">Check protection</button>
+            </form>
             <p class="cc-freshness">No capacity reading yet</p>
         }
     </section>
@@ -89,8 +95,20 @@
     <section class="cc-card cc-metric" aria-labelledby="protection-heading">
         <p class="cc-card-label">Data protection</p>
         <h2 id="protection-heading">@Model.ProtectionSummary</h2>
-        <p><a href="/integrity">View protection details</a></p>
-        <p class="cc-freshness">Ceph detail: @Model.Integrity.Raw.Status</p>
+        @if (Model.ProtectionProblems.Count > 0)
+        {
+            <ul class="cc-checks">
+                @foreach (var problem in Model.ProtectionProblems)
+                {
+                    <li>@problem</li>
+                }
+            </ul>
+        }
+        <form method="post" action="/integrity/check">
+            @Html.AntiForgeryToken()
+            <button class="cc-btn" type="submit">Check protection</button>
+        </form>
+        <p class="cc-freshness">@(Model.Integrity.Raw.Status == "UNAVAILABLE" ? "Not checked" : $"Last reading {Model.Integrity.ObservedAt:u}")</p>
     </section>
 
     <section class="cc-card cc-metric" aria-labelledby="hardware-heading">
@@ -100,17 +118,3 @@
         <p class="cc-freshness">@Model.RunningStorageServiceCount of @Model.StorageServiceCount storage services running</p>
     </section>
 </div>
-
-<details class="cc-card cc-details">
-    <summary>Advanced transition details</summary>
-    <dl class="cc-dl">
-        <dt>Internal state</dt>
-        <dd>@Model.Snapshot.State</dd>
-        <dt>Startup check</dt>
-        <dd>@(Model.Snapshot.Trusted ? "complete" : "not complete")</dd>
-        <dt>Transition step</dt>
-        <dd>@(Model.Snapshot.JournalStep ?? "none")</dd>
-        <dt>Transition owner</dt>
-        <dd>@(Model.Snapshot.LeaseHolder ?? "none")</dd>
-    </dl>
-</details>

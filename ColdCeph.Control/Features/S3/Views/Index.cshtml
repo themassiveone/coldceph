@@ -1,21 +1,119 @@
-@using ColdCeph.Core.Features.S3.DTOs
-@model S3PendingWorkDto
+@using ColdCeph.Control.Features.S3.ViewModels
+@model S3BrowseViewModel
 @{
-    ViewData["Title"] = "Backup traffic";
+    ViewData["Title"] = "Buckets";
 }
-<p class="cc-page-kicker">Advanced</p>
-<h1>Backup traffic</h1>
-<p class="cc-lead">Current client requests using the cold-storage S3 endpoint.</p>
-<section class="cc-card">
-    <h2>Current work</h2>
-    <dl class="cc-dl">
-        <dt>Pending work</dt>
-        <dd>@(Model.HasPendingWork ? "yes" : "no")</dd>
-        <dt>Active</dt>
-        <dd>@Model.ActiveCount</dd>
-        <dt>Queued</dt>
-        <dd>@Model.QueuedCount</dd>
-        <dt>Last activity</dt>
-        <dd>@(Model.LastActivity?.ToString("u") ?? "none")</dd>
-    </dl>
-</section>
+<p class="cc-page-kicker">Buckets</p>
+<h1>@(Model.Bucket is null ? "Buckets" : Model.Bucket)</h1>
+@if (!string.IsNullOrEmpty(Model.Banner))
+{
+    <div class="cc-banner @(Model.CanWake ? "cc-banner-busy" : "cc-banner-idle")">
+        <p>@Model.Banner</p>
+        @if (Model.CanWake)
+        {
+            <form method="post" action="/wake">
+                @Html.AntiForgeryToken()
+                <button class="cc-btn cc-btn-primary" type="submit">@Model.WakeLabel</button>
+            </form>
+        }
+    </div>
+}
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <p class="cc-empty">@Model.Error</p>
+}
+
+<div class="cc-browse @(Model.BrowseReady ? "" : "is-disabled")">
+    @if (Model.Crumbs.Count > 1)
+    {
+        <nav class="cc-crumbs" aria-label="Location">
+            @for (var index = 0; index < Model.Crumbs.Count; index++)
+            {
+                var crumb = Model.Crumbs[index];
+                if (index == Model.Crumbs.Count - 1)
+                {
+                    <span>@crumb.Label</span>
+                }
+                else
+                {
+                    <a href="@crumb.Href">@crumb.Label</a>
+                    <span aria-hidden="true">/</span>
+                }
+            }
+        </nav>
+    }
+
+    @if (Model.Bucket is not null && Model.BrowseReady)
+    {
+        <form class="cc-upload" method="post" action="/s3/@Uri.EscapeDataString(Model.Bucket)/upload" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="prefix" value="@Model.Prefix" />
+            <input type="file" name="file" required />
+            <button class="cc-btn cc-btn-primary" type="submit">Upload</button>
+        </form>
+    }
+
+    @if (!Model.BrowseReady)
+    {
+        <p class="cc-empty">Bucket contents are unavailable until storage is ready.</p>
+    }
+    else if (Model.Bucket is null)
+    {
+        @if (Model.Buckets.Count == 0)
+        {
+            <p class="cc-empty">No buckets yet.</p>
+        }
+        else
+        {
+            <div class="cc-table-wrap">
+                <table class="cc-table">
+                    <thead><tr><th>Bucket</th></tr></thead>
+                    <tbody>
+                    @foreach (var bucket in Model.Buckets)
+                    {
+                        <tr>
+                            <td><a href="/s3/@Uri.EscapeDataString(bucket.Name)">@bucket.Name</a></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    else
+    {
+        var empty = Model.Prefixes.Count == 0 && Model.Objects.Count == 0;
+        if (empty)
+        {
+            <p class="cc-empty">This folder is empty.</p>
+        }
+        else
+        {
+            <div class="cc-table-wrap">
+                <table class="cc-table">
+                    <thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var folder in Model.Prefixes)
+                    {
+                        <tr>
+                            <td><a href="@Model.FolderHref(folder)">@folder.Name</a></td>
+                            <td>Folder</td>
+                            <td></td>
+                        </tr>
+                    }
+                    @foreach (var item in Model.Objects)
+                    {
+                        <tr>
+                            <td>@item.Name</td>
+                            <td>@S3BrowseViewModel.FormatSize(item.Size)</td>
+                            <td class="cc-row-actions">
+                                <a class="cc-btn" href="@Model.DownloadHref(item)">Download</a>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>

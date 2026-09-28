@@ -59,12 +59,10 @@ else
         <nav class="cc-rail" aria-label="Operator">
             <a class="@NavClass("/")" href="/">Overview</a>
             <a class="@NavClass("/hosts")" href="/hosts">Storage</a>
+            <a class="@NavClass("/s3")" href="/s3">Buckets</a>
             <a class="@NavClass("/operations")" href="/operations">Activity</a>
-            <a class="@NavClass("/integrity")" href="/integrity">Data protection</a>
-            <div class="cc-nav-section">Advanced</div>
             <a class="@NavClass("/osds")" href="/osds">Storage services</a>
             <a class="@NavClass("/devices")" href="/devices">Disk details</a>
-            <a class="@NavClass("/s3")" href="/s3">Backup traffic</a>
             @if (signedIn)
             {
                 <form class="cc-rail-foot" method="post" action="/auth/logout">

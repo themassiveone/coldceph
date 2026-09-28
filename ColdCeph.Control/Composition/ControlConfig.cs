@@ -23,6 +23,9 @@ public sealed class ControlConfig
     public TimeSpan HeartbeatStaleAfter { get; init; } = TimeSpan.FromSeconds(45);
     public bool BindHttpListeners { get; init; } = true;
     public TimeSpan CephQueryCacheTtl { get; init; } = TimeSpan.FromSeconds(2);
+    public string S3AccessKey { get; init; } = "coldceph";
+    public string S3SecretKey { get; init; } = "coldcephsecret";
+    public string S3Region { get; init; } = "us-east-1";
 
     public IReadOnlyList<string> ListenUrls()
         => [$"http://*:{OperatorPort}", $"http://*:{S3Port}"];
@@ -85,7 +88,10 @@ public sealed class ControlConfig
             CephKeyring = Optional("COLDCEPH_CEPH_KEYRING"),
             ConfiguredNodeEndpoints = ParseEndpoints(Optional("COLDCEPH_NODE_ENDPOINT")),
             ConfiguredNodeHostId = hostId,
-            BindHttpListeners = Environment.GetEnvironmentVariable("COLDCEPH_BIND") != "0"
+            BindHttpListeners = Environment.GetEnvironmentVariable("COLDCEPH_BIND") != "0",
+            S3AccessKey = Optional("COLDCEPH_S3_ACCESS_KEY") ?? "coldceph",
+            S3SecretKey = Optional("COLDCEPH_S3_SECRET_KEY") ?? "coldcephsecret",
+            S3Region = Optional("COLDCEPH_S3_REGION") ?? "us-east-1"
         };
     }
 
