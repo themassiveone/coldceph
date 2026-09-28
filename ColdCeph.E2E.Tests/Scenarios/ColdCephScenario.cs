@@ -15,6 +15,7 @@ public sealed class ColdCephScenario : XceptoScenario
     public string OperatorPassword => SharedEnvironment.OperatorPassword;
     public string NodeToken => SharedEnvironment.NodeToken;
     public string HostId => SharedEnvironment.HostId;
+    public string DemoBucket => SharedEnvironment.DemoBucket;
 
     protected override ScenarioSetup Setup(ScenarioSetupBuilder builder) => builder.Build();
 }

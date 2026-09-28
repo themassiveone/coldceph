@@ -4,10 +4,31 @@ using DotNet.Testcontainers.Containers;
 
 namespace ColdCeph.E2E.Tests.Support;
 
+/// <summary>
+/// A single-container Ceph for the Xcepto journeys.
+/// <para>
+/// This deliberately does <em>not</em> force the cluster to <c>HEALTH_OK</c>. It used to mute the
+/// demo cluster's warnings and then refuse to start unless health was clean, with the reason
+/// stated in the throw: "Integrity would FAULT at READY". Classification is the thing most worth
+/// testing, and that arrangement guaranteed it only ever saw the empty case. The journeys now
+/// assert what ColdCeph concludes from the warnings a real small cluster actually reports.
+/// </para>
+/// <para>
+/// What it does wait for is the cluster being usable at all: a monitor quorum, an OSD that is up
+/// and in, and RGW answering. Those are preconditions, not verdicts about health.
+/// </para>
+/// </summary>
 public sealed class CephCluster : IAsyncDisposable
 {
     public const string Image = "quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8";
     public const int RgwPort = 8080;
+
+    /// <summary>
+    /// The CRUSH bucket StoragePlane scopes its <c>noout</c> to. The OSD is moved into it during
+    /// setup, so <c>osd set-group noout</c> actually covers something and Ceph raises the health
+    /// check ColdCeph has to classify. Pointing it at an empty bucket meant the flag affected
+    /// nothing and the check never appeared.
+    /// </summary>
     public const string NooutScope = "hdd-osds";
 
     private readonly IContainer _container;
@@ -15,6 +36,7 @@ public sealed class CephCluster : IAsyncDisposable
 
     public Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
     public string ContainerId => _container.Id;
+    public string DemoBucket => "cold";
 
     public CephCluster()
     {
@@ -49,9 +71,9 @@ public sealed class CephCluster : IAsyncDisposable
     {
         await _container.StartAsync(cancellationToken);
         RgwAddress = new Uri($"http://127.0.0.1:{_container.GetMappedPublicPort(RgwPort)}");
-        await SilenceDemoHealthWarningsAsync();
-        await EnsureNooutScopeAsync();
-        await WaitForHealthOkAsync();
+        await WaitForQuorumAsync(cancellationToken);
+        await WaitForOsdUpAsync(cancellationToken);
+        await MoveOsdIntoNooutScopeAsync();
         await WaitForRgwAsync(cancellationToken);
     }
 
@@ -63,87 +85,92 @@ public sealed class CephCluster : IAsyncDisposable
         await _container.DisposeAsync();
     }
 
-    private async Task SilenceDemoHealthWarningsAsync()
+    /// <summary>Runs a ceph command in the container, failing loudly rather than silently.</summary>
+    public async Task<string> CephAsync(params string[] command)
     {
-        string[][] commands =
-        [
-            ["ceph", "config", "set", "global", "mon_warn_on_pool_no_redundancy", "false"],
-            ["ceph", "config", "set", "global", "mon_warn_on_too_few_osds", "false"],
-            ["ceph", "health", "mute", "POOL_NO_REDUNDANCY"],
-            ["ceph", "health", "mute", "TOO_FEW_OSDS"],
-            ["ceph", "health", "mute", "AUTH_INSECURE_GLOBAL_ID_RECLAIM"],
-            ["ceph", "health", "mute", "AUTH_INSECURE_GLOBAL_ID_RECLAIM_ALLOWED"]
-        ];
-        foreach (var command in commands)
-        {
-            try
-            {
-                _ = await _container.ExecAsync(command);
-            }
-            catch (Exception)
-            {
-            }
-        }
+        var result = await _container.ExecAsync(["ceph", ..command]);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"ceph {string.Join(' ', command)} exited {result.ExitCode}: {result.Stderr}");
+        return result.Stdout;
     }
 
-    private async Task WaitForHealthOkAsync()
+    public async Task<string> TryCephAsync(params string[] command)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(2);
-        string? last = null;
-        while (DateTime.UtcNow < deadline)
-        {
-            var result = await _container.ExecAsync(["ceph", "health", "--format", "json"]);
-            last = result.Stdout;
-            if (result.ExitCode == 0 && last.Contains("HEALTH_OK", StringComparison.Ordinal))
-                return;
-            await Task.Delay(TimeSpan.FromSeconds(2));
-        }
-
-        throw new InvalidOperationException(
-            $"Demo Ceph did not reach HEALTH_OK (Integrity would FAULT at READY). Last health: {last}");
+        var result = await _container.ExecAsync(["ceph", ..command]);
+        return result.ExitCode == 0 ? result.Stdout : string.Empty;
     }
 
-    private async Task EnsureNooutScopeAsync()
-    {
-        try
-        {
-            _ = await _container.ExecAsync(["ceph", "osd", "crush", "add-bucket", NooutScope, "host"]);
-        }
-        catch (Exception)
-        {
-        }
+    private async Task WaitForQuorumAsync(CancellationToken cancellationToken)
+        => await WaitFor(
+            "a monitor quorum",
+            async () => (await TryCephAsync("quorum_status", "--format", "json")).Contains("quorum_names", StringComparison.Ordinal),
+            TimeSpan.FromMinutes(2),
+            cancellationToken);
 
-        try
-        {
-            _ = await _container.ExecAsync(["ceph", "osd", "crush", "move", NooutScope, "root=default"]);
-        }
-        catch (Exception)
-        {
-        }
+    /// <summary>
+    /// An OSD that is up and in is a precondition for anything ColdCeph does. Unlike HEALTH_OK it
+    /// says nothing about whether the cluster is warning about something.
+    /// </summary>
+    private async Task WaitForOsdUpAsync(CancellationToken cancellationToken)
+        => await WaitFor(
+            "an OSD that is up and in",
+            async () =>
+            {
+                var json = await TryCephAsync("osd", "dump", "--format", "json");
+                return json.Contains("\"up\":1", StringComparison.Ordinal)
+                       || json.Contains("\"up\": 1", StringComparison.Ordinal);
+            },
+            TimeSpan.FromMinutes(3),
+            cancellationToken);
+
+    /// <summary>
+    /// Puts the OSD's host under the bucket StoragePlane scopes noout to, so a scoped noout is a
+    /// real flag on a real OSD and Ceph reports it.
+    /// </summary>
+    private async Task MoveOsdIntoNooutScopeAsync()
+    {
+        // add-bucket is idempotent in effect but errors if it already exists, so it is tolerated.
+        _ = await TryCephAsync("osd", "crush", "add-bucket", NooutScope, "root");
+        await CephAsync("osd", "crush", "move", "ceph", $"root={NooutScope}");
     }
 
     private async Task WaitForRgwAsync(CancellationToken cancellationToken)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        var deadline = DateTime.UtcNow.AddMinutes(2);
-        Exception? last = null;
+        await WaitFor(
+            $"RGW to answer at {RgwAddress}",
+            async () =>
+            {
+                try
+                {
+                    var response = await client.GetAsync(RgwAddress, cancellationToken);
+                    return (int)response.StatusCode < 500;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            },
+            TimeSpan.FromMinutes(2),
+            cancellationToken);
+    }
+
+    private static async Task WaitFor(
+        string what,
+        Func<Task<bool>> ready,
+        TimeSpan limit,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + limit;
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var response = await client.GetAsync(RgwAddress, cancellationToken);
-                if ((int)response.StatusCode < 500)
-                    return;
-            }
-            catch (Exception ex)
-            {
-                last = ex;
-            }
-
+            if (await ready())
+                return;
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
-        throw new InvalidOperationException($"RGW did not become reachable at {RgwAddress}.", last);
+        throw new InvalidOperationException($"Demo Ceph did not reach {what} within {limit.TotalMinutes:0.#} minutes.");
     }
 }

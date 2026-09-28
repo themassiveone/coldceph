@@ -179,9 +179,40 @@ query Ceph.
 
 # Testing
 
-- NEVER run `dotnet` commands directly on `.csproj` files. ALWAYS use solution-wide `dotnet` commands.
+## Representativeness
+
+These rules exist because the suite once had ~320 passing tests while the Ceph integration did not
+work. Every signal was derived by grepping Ceph's prose, no test had ever seen real `ceph` output,
+and the E2E cluster was forced to `HEALTH_OK` before any test ran. See
+`docs/design/test-representativeness-review.md`.
+
+- **A fake stands in for an external system, never for our own reading of that system's output.**
+  The seam goes at the process or socket boundary — `IProcessRunner`, `HttpMessageHandler` — not at
+  an interface that returns the conclusions we wanted to test.
+- **Captured output, not invented output.** A health string, PG state, wire response or CLI output
+  shape that no one has observed from the real system is not valid test data. Ceph fixtures live in
+  `ColdCeph.Control.Tests/Support/CephFixtures`, one folder per cluster condition; add a scenario
+  there rather than a string in a test. `ColdCeph.E2E.Tests` asserts the live output still parses to
+  the shape those fixtures model.
+- **Decisions key on stable identifiers.** Ceph health check *names* and PG *state tokens*, never
+  substring searches over messages. Messages are prose and change between releases; a false positive
+  here drives an irreversible `FAULTED`.
+- **Adapters fail closed.** A provider that cannot confirm what happened throws. It never reports
+  the state it requested as the state it observed — that is what let an unreachable node read as
+  "every OSD is running".
+- **Every `Providers/` type has a `Provider/` fixture, and every process runner has tests.**
+  Enforced by `ProviderCoverage`. A fake of a production interface does not substitute for testing
+  the real implementation of that interface.
+- **A test that cannot fail is worse than no test.** Do not assert on a fake's default values. When
+  a test guards a specific regression, check it fails against the old behaviour before trusting it.
 - Positive + negative tests for every behavioral expectation. A test is only meaningful if it can
   distinguish correct behaviour from incorrect behaviour.
+- CI collects coverage and prints every production file no test executes. That list is a queue, not
+  a score.
+
+## Mechanics
+
+- NEVER run `dotnet` commands directly on `.csproj` files. ALWAYS use solution-wide `dotnet` commands.
 - No `[SetUp]` / `[OneTimeSetUp]` on new **test fixtures**. Arrange inside the test or a local helper
   with explicit arguments. `ColdCeph.E2E.Tests` may use a project `[SetUpFixture]` to host a
   Testcontainers Ceph demo plus Control + Node once for the whole Xcepto project.
@@ -189,7 +220,11 @@ query Ceph.
 - Slice **Unit/**: own writes and refuse illegal writes.
 - Slice **Controller/**: sibling-visible queries; commands only from that slice’s protocol tests.
 - **HTTP/**: MVC and `/v1` on the owning slice.
-- **Provider/**: ceph CLI, systemd, disk identity, proxy command shapes.
+- **Provider/**: ceph CLI, systemd, hdparm, disk identity, RGW proxy and client, node HTTP clients,
+  process runners. These assert the values the provider concludes and how it behaves on a failure,
+  not only the argv it produced.
+- **Concurrency**: Control's Osds/Devices/Hosts singletons are written by node pushes on HTTP threads
+  and read by three reconcile loops and every page render, so they are tested under real contention.
 - Layout chrome and Overview query StoragePlane + Integrity **only after authentication**. Login and
   anonymous 401 pages must not invoke the Ceph CLI. Authenticated chrome and Overview read
   Integrity’s last snapshot so HTML does not wait on the Ceph CLI. `POST /integrity/check` (and
@@ -199,12 +234,21 @@ query Ceph.
   S3 admission after `READY`, and Osds `osd dump` overlay on Osds list GET. Historical OSD/device
   inventory comes from Node push on enroll and local change. Reconcilers read Node-pushed state
   and the last Integrity snapshot; they do not invoke the Ceph CLI.
-- Ceph CLI is **single-flight** inside Integrity’s query provider so one confirmation’s
-  `health detail` / quorum / `pg stat` commands do not stack duplicate `health detail`
-  processes. `ContainsHealth` reuses that JSON; it must not spawn another process.
-  Control’s process runner admits **one child process at a time**.
+- One confirmation is **one pass**: `ICephQueryProvider.GetObservation()` issues `health detail`,
+  `status`, `quorum_status` and `pg stat` once each and returns a `CephObservation`; `CephSignals`
+  derives every readiness and durability signal from it. That property is structural, not a cache —
+  a TTL cache expires mid-confirmation on exactly the slow cluster where it matters. `osd dump` is a
+  separate confirmation, serving the Osds list GET. Control’s process runner admits **one child
+  process at a time**, and every child has a timeout and is killed on expiry.
 - StoragePlane, Osds, and Devices reconcilers catch provider exceptions per tick so a
-  failed node call cannot stop the loop. The next tick retries.
+  failed node call cannot stop the loop. The next tick retries. They **log** every such failure and
+  keep the last one on `ReconcilerLoop.LastError`: a silently failing loop is indistinguishable from
+  a healthy one, which is how a plane stuck in `WAKING` used to have no explanation anywhere.
+- Reconcilers only issue a command when the observed state differs from the desired one. Reissuing
+  start/wake every tick for the whole of `WAKING` is one call per drive per second against drives
+  that are spinning up.
+- Osds waits for Devices to report the mapped disk `Active` before starting an OSD, by reading
+  Devices’ controller. StoragePlane does not sequence them.
 - Nodes push `POST /v1/osds/observed` and `POST /v1/devices/observed` (node token, enrolled
   host only) on enroll, on re-enroll after Control was unreachable, and when the local snapshot
   changes. An unchanged snapshot is not resent while enrollment stays continuous. Node OSD/device
@@ -225,6 +269,23 @@ query Ceph.
   (the same argv Control uses when `COLDCEPH_CEPH_CONTAINER` is set). Xcepto is
   used only inside `ColdCeph.E2E.Tests`. The project-level `[SetUpFixture]` is the allowed
   exception to “no OneTimeSetUp on fixtures”.
+- **The E2E cluster is never forced healthy.** `CephCluster` waits for a monitor quorum, an OSD up
+  and in, and RGW answering — preconditions, not verdicts about health — and it does not mute
+  warnings or gate on `HEALTH_OK`. Muting them is what kept classification, the most
+  safety-critical logic in the product, from ever meeting a real health check. Journeys assert what
+  ColdCeph *concludes* from whatever the cluster reports, and a check the classifier does not
+  recognise fails the run by name. Setup commands fail loudly rather than being swallowed.
+- StoragePlane’s `noout` scope is a CRUSH bucket that **contains the OSD**, so a scoped `noout`
+  raises the health check ColdCeph has to classify. Scoping it to an empty bucket meant the flag
+  affected nothing and the check never appeared.
+- S3 journeys assert explicit statuses and include a real object **round trip** — PUT then GET the
+  same bytes — signed with a payload hash and signed `Content-*` headers, so a dropped signed header
+  surfaces as RGW’s 403. “Not a 503” passes on a 403, a 404 and a 500 alike.
+- **Known limitation:** the E2E node's OSD start/stop is simulated, because the `demo` container has
+  no supervisor that restarts `ceph-osd` on request. The `osd dump` overlay and everything Control
+  reads from Ceph are genuine; the OSD process lifecycle is not, so real wake timing — OSDs taking
+  tens of seconds, PGs peering — is still unexercised. Closing it needs a supervisor in the
+  container or a move to the compose stack; do not claim wake is covered end to end until then.
 
 # Packaging and CI
 
@@ -234,6 +295,9 @@ GitHub Release assets.
 
 CI: all branches run unit tests (`dotnet test` excluding `ColdCeph.E2E.Tests`) and a separate
 E2E job that only runs `ColdCeph.E2E.Tests`. The `[SetUpFixture]` starts Ceph via Testcontainers.
+The unit job collects coverage and runs `.github/scripts/coverage-summary.js`, which lists every
+production file no test executes; the E2E job runs under `--blame-hang`. Both upload test results,
+and an E2E failure uploads every container's logs — a flaky run has to leave something behind.
 CI plans one version before those jobs: non-`main` runs use `0.0.0-ci.<run>`, while serialized
 `main` runs use semantic-release with Conventional Commits to determine the next SemVer. After
 both test jobs pass, semantic-release publishes the two versioned debs plus checksums, creates the

@@ -4,6 +4,11 @@ Analysis of why ColdCeph's test suite passes while the Ceph integration is unrel
 
 Date: 2026-09-28. Scope: all six test projects, CI, and the production code they claim to guard.
 
+> **Status: acted on.** Sections 2–5 describe the state of the repository when this review was
+> written. The defects in §5 are fixed and the gates in §6 are in place; §8 records what was done,
+> what is verified and what is still open. The analysis is kept as written because the reasoning is
+> the reusable part — the rules it produced now live in AGENTS.md under *Testing → Representativeness*.
+
 ---
 
 ## 1. Verdict
@@ -583,3 +588,66 @@ belong in the same commits as the code.
 | 5.10 | `HdparmDiskPower` untested and likely non-functional | Devices `Provider/` tests | only the in-memory fake is tested |
 
 Nine of the ten are adapters to something outside the process. That is the whole finding.
+
+---
+
+## 8. What was done
+
+### Fixed and verified by test
+
+| # | Defect | Fix | How the fix is held |
+|---|--------|-----|---------------------|
+| 2.1–2.3, 6.1 | Signals grepped from Ceph's prose | `GetObservation()` returns one `CephObservation`; `CephSignals` derives everything from check **names** and PG **state tokens** | 13-scenario fixture corpus under `Support/CephFixtures`; `CephSignalsTests` covers each predicate both ways |
+| 5.1 | Node clients fabricated success | Both require a parsed 2xx, carry a timeout, and throw otherwise | `HttpNode*ClientTests` assert the desired state is never reported back; fakes gained a "responded, unchanged" mode |
+| 5.2 | `Content-*` dropped from every PUT | Body attached before headers; `ExpectContinue` set properly | 17 `StreamingRgwProxyTests`, including `Content-MD5` survival |
+| 5.3 | Unsynchronised Control singletons | All three locked | `ControlStateConcurrencyTests` — **verified to fail without the locks** |
+| 5.4 | No disk-before-OSD ordering | Osds reads Devices' inventory and waits | `PlaneHarness` asserts ordering across loops |
+| 5.5 | Per-second command storm | Commands only on drift | Multi-tick tests assert exact command counts |
+| 5.6 | TTL cache posing as single-flight | Cache removed; one call per confirmation, structurally | Provider tests assert one `health detail` per confirmation and two per two requests |
+| 5.7 | Unbounded wait, stdout/stderr deadlock | Bounded wait with tree kill; concurrent drain | 10 `SystemProcessRunnerTests` with real children — **verified to hang the run against the old implementation** |
+| 5.8 | Reconciler failures discarded | Logged, and kept on `ReconcilerLoop.LastError` | Tests assert the failure is recorded and cleared on recovery |
+| 5.9 | `X-ColdCeph-S3` auth bypass | Removed | `TwoPortControlHost` binds both ports; a test asserts no header substitutes |
+| 5.10 | `HdparmDiskPower` untested, `Wake` ineffective | Every `-C` state mapped; `Wake` forces a read first | 19 `HdparmDiskPowerTests` |
+| 5.10 | `IsRunning` had no positive case | — | Both runtimes now assert true, false, and every intermediate systemd state |
+| 5.10 | Error observation erased inventory | An error report with no entries keeps what Control knows | Tests both ways |
+| 6.6 | Gates measured file layout only | `ProviderCoverage` rules; coverage summary and failure artifacts in CI | The rules found `RgwS3Client` untested on their first run |
+| new | `RgwS3Client` (hand-rolled SigV4) untested; signed path re-canonicalised before sending | Clock injected; path preserved exactly | 25 tests asserting the signature depends on each element it covers |
+| new | `/v1` surface almost entirely unexecuted | — | StoragePlane and Integrity `/v1` now tested |
+
+Unit tests went from 284 to 590. Two of the fixes were mutation-checked against the old code rather
+than assumed.
+
+### Changed on reflection
+
+Two of §5's claims were wrong about Ceph, and the fixture corpus is what showed it:
+
+- **`active+clean+inconsistent` is clean.** Damage does not clear the `clean` token; it is reported
+  through `PG_DAMAGED`. Writes are held by the damage signal, not by cleanliness.
+- **`stale+active+clean` keeps the `active` token.** Ceph retains the last state it saw and adds
+  `stale`. Availability therefore comes from the `stale` token, not from the absence of `active`.
+
+Both are now tests in their own right. Separately, `PG_DEGRADED` turned out to be wrong to treat as
+unexpected: degraded means reduced redundancy, not unreadable data, and classifying it that way
+closed reads for the whole of every recovery window. Unrecognised checks are now judged on severity
+rather than against a list of names, so a warning from a later Ceph release does not hold writes back
+for being unfamiliar while an unrecognised error still fails closed.
+
+### Still open
+
+- **E2E OSD lifecycle is still simulated.** The `demo` container has no supervisor that restarts
+  `ceph-osd` on request, so `InMemoryOsdRuntime` stays. The `osd dump` overlay and everything
+  Control reads from Ceph are now genuine, and the cluster is no longer forced healthy — but real
+  wake timing, with OSDs taking tens of seconds and PGs peering, is still unexercised. Closing it
+  needs a supervisor in the container or a move to the compose stack.
+- **The fixture corpus is modelled, not captured.** It follows Ceph Quincy's documented schema; it
+  was not taken from a running cluster, because the container this work was done in had no Docker
+  daemon. `CephAdapter.SeeConfirmationShapeMatchesFixtures` asserts the live output parses to the
+  same shape, which catches schema drift but is not the same as re-capturing. The corpus README says
+  how.
+- **None of the E2E changes have been run.** No Docker daemon was available. They compile; the
+  journeys themselves are unverified.
+- **Operations' HTTP surface and the Debug CLI have no coverage.** Surfaced by the new coverage
+  summary, out of scope here.
+- **No mutation testing.** §6.6 recommended trialling Stryker.NET on `Providers/` and
+  `IntegrityService`. The two manual mutation checks in this round both found something, which is an
+  argument for automating it.

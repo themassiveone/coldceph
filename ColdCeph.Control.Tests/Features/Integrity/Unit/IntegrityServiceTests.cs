@@ -199,6 +199,61 @@ public sealed class IntegrityServiceTests
         Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
     }
 
+    // ---- checks this build has never heard of -------------------------------
+
+    /// <summary>
+    /// Ceph adds health checks between releases. A warning this build does not recognise must not
+    /// hold writes back merely for being unfamiliar — that is what made the E2E harness mute the
+    /// demo cluster's ordinary warnings rather than classify them.
+    /// </summary>
+    [Test]
+    public void An_unrecognised_warning_is_expected()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Observation = Unknown("A_CHECK_FROM_A_LATER_CEPH", "HEALTH_WARN");
+        Reach(plane, StoragePlaneState.Ready);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Single().Classification, Is.EqualTo(HealthClassification.ExpectedCold));
+        Assert.That(snapshot.Predicates.WriteReady, Is.True);
+    }
+
+    /// <summary>But an unrecognised error still fails closed.</summary>
+    [Test]
+    public void An_unrecognised_error_is_unexpected()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Observation = Unknown("AN_ERROR_FROM_A_LATER_CEPH", "HEALTH_ERR");
+        Reach(plane, StoragePlaneState.Ready);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Single().Classification, Is.EqualTo(HealthClassification.Unexpected));
+        Assert.That(snapshot.Predicates.WriteReady, Is.False);
+    }
+
+    /// <summary>
+    /// And an unrecognised check of either severity is not a durability failure, so it cannot
+    /// FAULT the appliance.
+    /// </summary>
+    [TestCase("HEALTH_WARN")]
+    [TestCase("HEALTH_ERR")]
+    public void An_unrecognised_check_is_never_a_durability_failure(string severity)
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.Observation = Unknown("SOMETHING_NEW", severity);
+
+        Assert.That(integrity.GetIntegrity().DurabilityFailure, Is.False);
+    }
+
+    private static CephObservation Unknown(string name, string severity)
+        => CephFixture.Observation(CephFixture.Healthy) with
+        {
+            Health = new CephHealthRaw { Status = severity, Summary = name, Checks = [name] },
+            HealthChecks = [new CephHealthCheck { Name = name, Severity = severity, Message = "something new" }]
+        };
+
     // ---- readiness ---------------------------------------------------------
 
     [Test]

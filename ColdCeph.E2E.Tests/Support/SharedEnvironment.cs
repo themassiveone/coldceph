@@ -21,6 +21,7 @@ public sealed class SharedEnvironment
     public const string OperatorPassword = "changeme";
     public const string NodeToken = "changeme";
     public const string HostId = "dev";
+    public const string DemoBucket = "cold";
     public const int OperatorPort = 18080;
     public const int S3Port = 17480;
     public const int NodePort = 17080;

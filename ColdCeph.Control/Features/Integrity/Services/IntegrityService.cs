@@ -173,14 +173,26 @@ public sealed class IntegrityService
                 ? HealthClassification.ExpectedCold
                 : HealthClassification.Unexpected;
 
-        if (AlwaysBenignChecks.Contains(check.Name, StringComparer.Ordinal))
-            return HealthClassification.ExpectedCold;
+        // These say the data plane is not serving, which is exactly what a cold appliance looks
+        // like — and a real problem at any other time.
+        if (ColdPhaseChecks.Contains(check.Name, StringComparer.Ordinal))
+            return IsColdPhase(plane)
+                ? HealthClassification.ExpectedCold
+                : HealthClassification.Unexpected;
 
-        if (ColdPhaseChecks.Contains(check.Name, StringComparer.Ordinal) && IsColdPhase(plane))
-            return HealthClassification.ExpectedCold;
-
-        return HealthClassification.Unexpected;
+        // Anything else is judged on severity rather than against a list of names. Ceph adds
+        // health checks between releases, and a name this build has not heard of should not hold
+        // writes back merely for being unfamiliar: spec §52 is explicit that ordinary HEALTH_WARN
+        // checks are not a reason to stop. An unrecognised HEALTH_ERR still fails closed, and the
+        // conditions that genuinely matter — durability, flags, availability, full OSDs — are
+        // matched by name above or carried as signals.
+        return IsError(check.Severity)
+            ? HealthClassification.Unexpected
+            : HealthClassification.ExpectedCold;
     }
+
+    private static bool IsError(string severity)
+        => severity.Contains("ERR", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// A flags check is expected only when StoragePlane holds a controller-owned
@@ -222,38 +234,6 @@ public sealed class IntegrityService
     ];
 
     private static readonly string[] FlagChecks = ["OSDMAP_FLAGS", "OSD_FLAGS"];
-
-    /// <summary>
-    /// Ordinary warnings that are never a reason to hold the plane back, in any state.
-    /// </summary>
-    private static readonly string[] AlwaysBenignChecks =
-    [
-        "TOO_FEW_PGS",
-        "TOO_FEW_OSDS",
-        "MANY_OBJECTS_PER_PG",
-        "POOL_NO_REDUNDANCY",
-        "POOL_APP_NOT_ENABLED",
-        "AUTH_INSECURE_GLOBAL_ID_RECLAIM",
-        "AUTH_INSECURE_GLOBAL_ID_RECLAIM_ALLOWED",
-        "MON_DISK_LOW",
-        "MON_MSGR2_NOT_ENABLED",
-        "PG_NOT_SCRUBBED",
-        "PG_NOT_DEEP_SCRUBBED",
-        "OSD_SLOW_PING_TIME_BACK",
-        "OSD_SLOW_PING_TIME_FRONT",
-        "BLUESTORE_NO_PER_POOL_OMAP",
-        "BLUESTORE_NO_PER_PG_OMAP",
-        "RECENT_CRASH",
-        "TELEMETRY_CHANGED",
-
-        // Reduced redundancy and data in motion, not data that cannot be read. Writes and sleep
-        // are already held back by the recovery/backfill signal, and treating these as unexpected
-        // would close reads for the whole of every recovery window.
-        "PG_DEGRADED",
-        "PG_DEGRADED_FULL",
-        "OBJECT_MISPLACED",
-        "PG_RECOVERY_UNFOUND_DELAYED"
-    ];
 
     /// <summary>
     /// Expected while the data plane is cold, waking or going to sleep: these are what an
