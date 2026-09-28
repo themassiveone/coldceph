@@ -6,8 +6,14 @@ using ColdCeph.Core.Features.Hosts.DTOs;
 
 namespace ColdCeph.Control.Features.Hosts.Services;
 
+/// <summary>
+/// Enrolled hosts, pending joins and blocked joins. Written by node joins and operator
+/// allow/deny on HTTP threads, read by all three reconcile loops every second, so every
+/// dictionary access is under <c>_gate</c>.
+/// </summary>
 public sealed class HostsService
 {
+    private readonly object _gate = new();
     private readonly ControlConfig _config;
     private readonly IClock _clock;
     private readonly IHostsRepository? _repository;
@@ -38,18 +44,36 @@ public sealed class HostsService
     }
 
     public IReadOnlyList<HostDto> ListHosts()
-        => _hosts.Values.Select(Refresh).ToArray();
+    {
+        lock (_gate)
+            return _hosts.Values.Select(Refresh).ToArray();
+    }
 
     public IReadOnlyList<HostJoinRequestDto> ListPendingJoins()
-        => _pending.Values.ToArray();
+    {
+        lock (_gate)
+            return _pending.Values.ToArray();
+    }
 
     public IReadOnlyList<HostJoinRequestDto> ListBlockedJoins()
-        => _blocked.Values.ToArray();
+    {
+        lock (_gate)
+            return _blocked.Values.ToArray();
+    }
 
     public HostDto? GetHost(string hostId)
-        => _hosts.TryGetValue(hostId, out var host) ? Refresh(host) : null;
+    {
+        lock (_gate)
+            return _hosts.TryGetValue(hostId, out var host) ? Refresh(host) : null;
+    }
 
     public HostDto RegisterHeartbeat(NodeStatusDto status, Uri endpoint)
+    {
+        lock (_gate)
+            return RegisterHeartbeatLocked(status, endpoint);
+    }
+
+    private HostDto RegisterHeartbeatLocked(NodeStatusDto status, Uri endpoint)
     {
         var host = new HostDto
         {
@@ -62,7 +86,7 @@ public sealed class HostsService
         _hosts[status.HostId] = host;
         _pending.Remove(status.HostId);
         _blocked.Remove(status.HostId);
-        Persist();
+        PersistLocked();
         return host;
     }
 
@@ -80,40 +104,49 @@ public sealed class HostsService
             RequestedAt = _clock.UtcNow
         };
 
-        if (_hosts.ContainsKey(status.HostId))
-            return new NodeJoinResult(200, RegisterHeartbeat(status, endpoint));
-
-        if (_blocked.ContainsKey(status.HostId))
+        lock (_gate)
         {
-            _blocked[status.HostId] = request;
-            Persist();
-            return new NodeJoinResult(403, null);
-        }
+            if (_hosts.ContainsKey(status.HostId))
+                return new NodeJoinResult(200, RegisterHeartbeatLocked(status, endpoint));
 
-        _pending[status.HostId] = request;
-        Persist();
-        return new NodeJoinResult(202, null);
+            if (_blocked.ContainsKey(status.HostId))
+            {
+                _blocked[status.HostId] = request;
+                PersistLocked();
+                return new NodeJoinResult(403, null);
+            }
+
+            _pending[status.HostId] = request;
+            PersistLocked();
+            return new NodeJoinResult(202, null);
+        }
     }
 
     public HostDto? Approve(string hostId)
     {
-        if (_pending.Remove(hostId, out var pending))
-            return RegisterHeartbeat(ToStatus(pending), pending.Endpoint);
-        if (_blocked.Remove(hostId, out var blocked))
-            return RegisterHeartbeat(ToStatus(blocked), blocked.Endpoint);
-        return null;
+        lock (_gate)
+        {
+            if (_pending.Remove(hostId, out var pending))
+                return RegisterHeartbeatLocked(ToStatus(pending), pending.Endpoint);
+            if (_blocked.Remove(hostId, out var blocked))
+                return RegisterHeartbeatLocked(ToStatus(blocked), blocked.Endpoint);
+            return null;
+        }
     }
 
     public bool Deny(string hostId)
     {
-        if (!_pending.Remove(hostId, out var pending))
-            return false;
-        _blocked[hostId] = pending;
-        Persist();
-        return true;
+        lock (_gate)
+        {
+            if (!_pending.Remove(hostId, out var pending))
+                return false;
+            _blocked[hostId] = pending;
+            PersistLocked();
+            return true;
+        }
     }
 
-    private void Persist()
+    private void PersistLocked()
         => _repository?.Save(new HostsRecord
         {
             Hosts = new Dictionary<string, HostDto>(_hosts, StringComparer.Ordinal),

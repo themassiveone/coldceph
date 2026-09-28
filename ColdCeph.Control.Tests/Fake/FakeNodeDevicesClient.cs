@@ -3,28 +3,47 @@ using ColdCeph.Core.Features.Devices.DTOs;
 
 namespace ColdCeph.Control.Tests.Fake;
 
+/// <summary>
+/// Stands in for a node's disk endpoint, including the case where a wake or standby is accepted
+/// but the drive has not changed state yet.
+/// </summary>
 public sealed class FakeNodeDevicesClient : INodeDevicesClient
 {
-    public List<string> Commands { get; } = [];
-    public DevicePowerState Power { get; set; } = DevicePowerState.Standby;
+    private readonly NodeCommandLog _log;
+
+    public FakeNodeDevicesClient(NodeCommandLog? log = null)
+    {
+        _log = log ?? new NodeCommandLog();
+    }
+
+    public IReadOnlyList<string> Commands => _log.Commands;
 
     public bool ThrowOnWake { get; set; }
 
     public HashSet<Uri> ThrowOnWakeFor { get; } = [];
 
+    /// <summary>The drive is still spinning up.</summary>
+    public bool WakeDoesNotTake { get; set; }
+
+    public bool StandbyDoesNotTake { get; set; }
+
     public DeviceMutationResult Wake(Uri endpoint, DeviceMutationRequest request)
     {
         if (ThrowOnWake || ThrowOnWakeFor.Contains(endpoint))
             throw new InvalidOperationException("node down");
-        Commands.Add($"{endpoint.Port} wake {request.DeviceId}");
-        Power = DevicePowerState.Active;
-        return new DeviceMutationResult(request.DeviceId, DevicePowerState.Active, false);
+        _log.Add($"{endpoint.Port} wake {request.DeviceId}");
+        return new DeviceMutationResult(
+            request.DeviceId,
+            WakeDoesNotTake ? DevicePowerState.Standby : DevicePowerState.Active,
+            false);
     }
 
     public DeviceMutationResult Standby(Uri endpoint, DeviceMutationRequest request)
     {
-        Commands.Add($"{endpoint.Port} standby {request.DeviceId}");
-        Power = DevicePowerState.Standby;
-        return new DeviceMutationResult(request.DeviceId, DevicePowerState.Standby, false);
+        _log.Add($"{endpoint.Port} standby {request.DeviceId}");
+        return new DeviceMutationResult(
+            request.DeviceId,
+            StandbyDoesNotTake ? DevicePowerState.Active : DevicePowerState.Standby,
+            false);
     }
 }

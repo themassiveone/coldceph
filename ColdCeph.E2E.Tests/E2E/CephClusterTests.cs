@@ -20,7 +20,8 @@ public sealed class CephClusterTests
 
             ceph.SeeQuorum();
             ceph.SeeHealthNotSilent();
-            ceph.SeePgStat();
+            ceph.SeePgStatesParsed();
+            ceph.SeeConfirmationShapeMatchesFixtures();
             ceph.SeeOsdMembership();
             ceph.SeeScopedNooutRoundTrip();
         });

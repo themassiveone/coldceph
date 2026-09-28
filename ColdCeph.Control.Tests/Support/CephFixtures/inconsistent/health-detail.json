@@ -1,0 +1,1 @@
+{"status":"HEALTH_ERR","checks":{"PG_DAMAGED":{"severity":"HEALTH_ERR","summary":{"message":"Possible data damage: 1 pg inconsistent","count":1},"detail":[{"message":"pg 2.7 is active+clean+inconsistent, acting [0,1,2]"}],"muted":false},"OSD_SCRUB_ERRORS":{"severity":"HEALTH_ERR","summary":{"message":"2 scrub errors","count":2},"detail":[],"muted":false}},"mutes":[]}

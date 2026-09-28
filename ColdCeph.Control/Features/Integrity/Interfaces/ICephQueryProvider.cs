@@ -4,16 +4,16 @@ namespace ColdCeph.Control.Features.Integrity.Interfaces;
 
 public interface ICephQueryProvider
 {
-    CephHealthRaw GetHealthDetail();
-    ClusterCapacityDto GetCapacity();
-    bool GetQuorumAvailable();
-    bool GetPgsActive();
-    bool GetPgsClean();
-    bool GetHasUnfound();
-    bool GetHasInconsistent();
-    bool GetHasRecoveryOrBackfill();
-    bool GetHasStaleOrIncomplete();
-    bool GetHasFullOsds();
-    IReadOnlyList<string> GetHealthChecks();
+    /// <summary>
+    /// One confirmation. Reads health, capacity, quorum and PG state in a single pass so
+    /// that "the monitor is queried once per external request" holds structurally, with no
+    /// cache and no clock involved.
+    /// </summary>
+    CephObservation GetObservation();
+
+    /// <summary>
+    /// The Ceph <c>osd dump</c> up/in overlay. A separate confirmation because it serves a
+    /// separate external request: one Osds list GET.
+    /// </summary>
     IReadOnlyDictionary<int, OsdMembershipDto> ListOsdMembership();
 }

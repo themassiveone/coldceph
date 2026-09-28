@@ -16,7 +16,7 @@ public sealed class AuthHttpTests
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
         Assert.That(response.Headers.Location?.ToString(), Is.EqualTo("/auth/login"));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]

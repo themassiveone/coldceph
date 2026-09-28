@@ -1,0 +1,1 @@
+{"status":"HEALTH_WARN","checks":{"PG_AVAILABILITY":{"severity":"HEALTH_WARN","summary":{"message":"Reduced data availability: 2 pgs inactive, 2 pgs incomplete","count":2},"detail":[{"message":"pg 2.1 is incomplete, acting [0] (reducing pool cold min_size from 2 may help; search ceph.com/docs for 'incomplete')"}],"muted":false}},"mutes":[]}

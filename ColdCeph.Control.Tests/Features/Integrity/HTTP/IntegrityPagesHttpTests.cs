@@ -15,8 +15,7 @@ public sealed class IntegrityPagesHttpTests
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
         Assert.That(response.Headers.Location?.ToString(), Is.EqualTo("/"));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
-        Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -35,15 +34,14 @@ public sealed class IntegrityPagesHttpTests
         Assert.That(html, Does.Contain("2 GB"));
         Assert.That(html, Does.Contain("Protected when last checked"));
         Assert.That(html, Does.Not.Contain("Advanced"));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(1));
-        Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(1));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(1));
     }
 
     [Test]
     public async Task Check_protection_when_ceph_is_down_does_not_claim_health_ok()
     {
         using var factory = new Support.ControlAppFactory();
-        factory.Ceph.ThrowOnHealth = true;
+        factory.Ceph.ThrowOnObservation = true;
         using var client = await Support.OperatorClient.SignedIn(factory);
 
         _ = await Support.OperatorClient.Post(client, "/integrity/check");

@@ -1,15 +1,12 @@
 namespace ColdCeph.Core.Features.Integrity.DTOs;
 
+/// <summary>
+/// Whether a confirmation found one of spec §52's durability failures.
+/// The verdict is computed once, by <see cref="CephSignals"/>, from Ceph's health check
+/// names and PG state tokens, and carried on the snapshot. Callers read it; they do not
+/// re-derive it from message text.
+/// </summary>
 public static class IntegrityDurability
 {
-    public static bool IsFailure(string text)
-        => Contains(text, "unfound")
-           || Contains(text, "inconsistent")
-           || Contains(text, "incomplete");
-
-    public static bool HasFailure(IntegritySnapshot snapshot)
-        => snapshot.Checks.Any(check => IsFailure(check.Name) || IsFailure(check.Detail));
-
-    private static bool Contains(string text, string token)
-        => text.Contains(token, StringComparison.OrdinalIgnoreCase);
+    public static bool HasFailure(IntegritySnapshot snapshot) => snapshot.DurabilityFailure;
 }

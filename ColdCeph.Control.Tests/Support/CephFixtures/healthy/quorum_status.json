@@ -1,0 +1,1 @@
+{"election_epoch":6,"quorum":[0],"quorum_names":["ceph"],"quorum_leader_name":"ceph","quorum_age":842,"monmap":{"epoch":1,"min_mon_release":17,"min_mon_release_name":"quincy","num_mons":1}}

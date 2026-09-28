@@ -1,0 +1,1 @@
+{"num_pgs":33,"pgs_by_state":[{"state_name":"active+clean","count":28},{"state_name":"active+recovering+degraded","count":3},{"state_name":"active+remapped+backfill_wait","count":2}]}

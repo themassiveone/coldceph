@@ -131,10 +131,12 @@ public sealed class StoragePlanePagesControllerTests
                     {
                         Name = "OBJECT_UNFOUND",
                         Detail = "OBJECT_UNFOUND: unfound objects",
-                        Classification = HealthClassification.Unexpected
+                        Classification = HealthClassification.Unexpected,
+                        Durability = true
                     }
                 ]
                 : [],
+            DurabilityFailure = durabilityFailure,
             Predicates = new ReadinessPredicates
             {
                 ControlPlaneAvailable = !durabilityFailure,

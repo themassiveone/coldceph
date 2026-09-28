@@ -1,76 +1,65 @@
 using ColdCeph.Core.Features.Integrity.DTOs;
+using ColdCeph.Core.Tests.Support;
 
 namespace ColdCeph.Core.Tests.Features.Integrity.Unit;
 
+/// <summary>
+/// The FAULTED verdict is carried on the snapshot, decided once by <see cref="CephSignals"/>.
+/// Callers must read that, not re-derive it from check names or message text: the names Ceph
+/// uses for damage (<c>PG_DAMAGED</c>, <c>OSD_SCRUB_ERRORS</c>) do not contain the words a text
+/// search would look for.
+/// </summary>
 [TestFixture]
 public sealed class IntegrityDurabilityTests
 {
     [Test]
-    public void Unfound_objects_are_a_durability_failure()
+    public void A_snapshot_carrying_a_durability_failure_reports_one()
     {
-        Assert.That(IntegrityDurability.IsFailure("OBJECT_UNFOUND: unfound objects"), Is.True);
-        Assert.That(IntegrityDurability.HasFailure(Snapshot("OBJECT_UNFOUND", "unfound objects")), Is.True);
+        var snapshot = CephObservations.Snapshot(durabilityFailure: true, "OBJECT_UNFOUND");
+
+        Assert.That(IntegrityDurability.HasFailure(snapshot), Is.True);
     }
 
     [Test]
-    public void Too_few_pgs_is_not_a_durability_failure()
+    public void A_snapshot_without_one_does_not_report_one()
     {
-        Assert.That(IntegrityDurability.IsFailure("TOO_FEW_PGS: too few PGs"), Is.False);
-        Assert.That(IntegrityDurability.HasFailure(Snapshot("TOO_FEW_PGS", "too few PGs")), Is.False);
+        var snapshot = CephObservations.Snapshot(durabilityFailure: false, "OSD_DOWN", "TOO_FEW_PGS");
+
+        Assert.That(IntegrityDurability.HasFailure(snapshot), Is.False);
     }
 
     [Test]
-    public void Osd_down_is_not_a_durability_failure()
+    public void A_clean_snapshot_with_no_checks_does_not_report_one()
     {
-        Assert.That(IntegrityDurability.IsFailure("OSD_DOWN: 1 osds down"), Is.False);
-        Assert.That(IntegrityDurability.HasFailure(Snapshot("OSD_DOWN", "1 osds down")), Is.False);
+        var snapshot = CephObservations.Snapshot(durabilityFailure: false);
+
+        Assert.That(snapshot.Checks, Is.Empty);
+        Assert.That(IntegrityDurability.HasFailure(snapshot), Is.False);
     }
 
+    /// <summary>
+    /// Damage reported under a name that says nothing about inconsistency still faults, which
+    /// is the case a name-substring test silently missed.
+    /// </summary>
     [Test]
-    public void Empty_health_ok_is_not_a_durability_failure()
+    public void Damage_named_PG_DAMAGED_reports_a_failure()
     {
-        Assert.That(IntegrityDurability.HasFailure(Snapshot(name: "", detail: "")), Is.False);
-        Assert.That(IntegrityDurability.HasFailure(new IntegritySnapshot
-        {
-            Raw = new CephHealthRaw { Status = "HEALTH_OK", Summary = "HEALTH_OK", Checks = [] },
-            Checks = [],
-            Predicates = ReadyPredicates(),
-            Capacity = null,
-            CapacityUnavailableReason = null,
-            LastVerifiedCleanAt = null,
-            LastVerifiedCleanSummary = null,
-            ObservedAt = DateTimeOffset.UnixEpoch
-        }), Is.False);
+        var snapshot = CephObservations.Snapshot(durabilityFailure: true, "PG_DAMAGED");
+
+        Assert.That(snapshot.Checks.Single().Name, Does.Not.Contain("inconsistent").IgnoreCase);
+        Assert.That(IntegrityDurability.HasFailure(snapshot), Is.True);
     }
 
-    private static IntegritySnapshot Snapshot(string name, string detail)
-        => new()
-        {
-            Raw = new CephHealthRaw { Status = "HEALTH_WARN", Summary = detail, Checks = [detail] },
-            Checks =
-            [
-                new ClassifiedHealthCheck
-                {
-                    Name = name,
-                    Detail = $"{name}: {detail}",
-                    Classification = HealthClassification.Unexpected
-                }
-            ],
-            Predicates = ReadyPredicates(),
-            Capacity = null,
-            CapacityUnavailableReason = null,
-            LastVerifiedCleanAt = null,
-            LastVerifiedCleanSummary = null,
-            ObservedAt = DateTimeOffset.UnixEpoch
-        };
+    /// <summary>
+    /// And a name that happens to contain one of those words does not fault on its own — the
+    /// flag on the snapshot decides.
+    /// </summary>
+    [Test]
+    public void A_check_name_containing_a_loaded_word_does_not_fault_by_itself()
+    {
+        var snapshot = CephObservations.Snapshot(durabilityFailure: false, "RGW_INCOMPLETE_MULTIPART_UPLOADS");
 
-    private static ReadinessPredicates ReadyPredicates()
-        => new()
-        {
-            ControlPlaneAvailable = true,
-            OsdPlaneExpected = true,
-            ReadReady = true,
-            WriteReady = true,
-            SleepSafe = true
-        };
+        Assert.That(snapshot.Checks.Single().Name, Does.Contain("INCOMPLETE"));
+        Assert.That(IntegrityDurability.HasFailure(snapshot), Is.False);
+    }
 }

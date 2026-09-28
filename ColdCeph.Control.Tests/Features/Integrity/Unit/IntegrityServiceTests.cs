@@ -1,271 +1,388 @@
+using ColdCeph.Control.Composition;
 using ColdCeph.Control.Features.Integrity.Services;
 using ColdCeph.Control.Features.StoragePlane.Controllers;
 using ColdCeph.Control.Features.StoragePlane.Services;
 using ColdCeph.Control.Tests.Fake;
-using ColdCeph.Control.Composition;
+using ColdCeph.Control.Tests.Support;
 using ColdCeph.Core.Features.Integrity.DTOs;
 using ColdCeph.Core.Features.Operations.DTOs;
 using ColdCeph.Core.Features.StoragePlane.DTOs;
 
 namespace ColdCeph.Control.Tests.Features.Integrity.Unit;
 
+/// <summary>
+/// Classification, driven from the fixture corpus so the strings being classified are the
+/// strings Ceph emits. Health classification keys on check names; the StoragePlane state
+/// decides whether a cold-phase condition is expected.
+/// </summary>
 [TestFixture]
 public sealed class IntegrityServiceTests
 {
+    // ---- cold-phase conditions ---------------------------------------------
+
     [Test]
-    public void Cold_health_err_from_osds_down_is_expected_cold()
+    public void Stopped_osds_while_cold_are_expected()
     {
         var (integrity, ceph, plane) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_ERR",
-            Summary = "1 osds down",
-            Checks = ["OSD_DOWN: 1 osds down"]
-        };
-        ceph.HealthChecks = ["OSD_DOWN: 1 osds down"];
+        ceph.Seeing(CephFixture.ColdOsdsDown);
         plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
 
         var snapshot = integrity.GetIntegrity();
 
+        Assert.That(snapshot.Checks.Select(check => check.Name),
+            Is.EquivalentTo(new[] { "OSD_DOWN", "OSD_HOST_DOWN", "PG_AVAILABILITY" }));
         Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
-        Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_ERR"));
+        Assert.That(snapshot.DurabilityFailure, Is.False);
     }
 
     [Test]
-    public void Health_warn_while_waking_is_not_unexpected()
+    public void Stopped_osds_while_ready_are_unexpected_and_hold_writes()
     {
         var (integrity, ceph, plane) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_WARN",
-            Summary = "OSD_DOWN: 1 osds down",
-            Checks = ["OSD_DOWN: 1 osds down"]
-        };
-        ceph.HealthChecks = ["OSD_DOWN: 1 osds down"];
+        ceph.Seeing(CephFixture.ColdOsdsDown);
         var operationId = OperationIdRules.Create().Value;
         plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
 
         var snapshot = integrity.GetIntegrity();
 
-        Assert.That(snapshot.Checks.All(check => check.Classification != HealthClassification.Unexpected), Is.True);
-        Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
+        Assert.That(snapshot.Predicates.WriteReady, Is.False);
+        Assert.That(snapshot.DurabilityFailure, Is.False);
     }
 
     [Test]
-    public void Unfound_objects_while_waking_remain_unexpected()
+    public void Peering_pgs_while_waking_are_expected_and_do_not_fault()
     {
         var (integrity, ceph, plane) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_ERR",
-            Summary = "unfound objects",
-            Checks = ["OBJECT_UNFOUND: unfound objects"]
-        };
-        ceph.HasUnfound = true;
-        ceph.HealthChecks = ["OBJECT_UNFOUND: unfound objects"];
+        ceph.Seeing(CephFixture.WakingPeering);
         plane.RequestWake(OperationIdRules.Create().Value, "operator");
 
         var snapshot = integrity.GetIntegrity();
 
-        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
         Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+        Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
+        Assert.That(snapshot.DurabilityFailure, Is.False);
+        Assert.That(snapshot.Predicates.ReadReady, Is.False);
+    }
+
+    /// <summary>
+    /// The three warnings the E2E harness used to mute before any test ran. They are ordinary
+    /// on a small cluster and must not hold the plane back in any state.
+    /// </summary>
+    [TestCase(StoragePlaneState.Cold)]
+    [TestCase(StoragePlaneState.Ready)]
+    public void Demo_cluster_warnings_are_expected_in_every_state(StoragePlaneState state)
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(CephFixture.DemoWarnings);
+        Reach(plane, state);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Select(check => check.Name),
+            Is.EquivalentTo(new[] { "POOL_NO_REDUNDANCY", "TOO_FEW_OSDS", "AUTH_INSECURE_GLOBAL_ID_RECLAIM_ALLOWED" }));
+        Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
+        Assert.That(snapshot.DurabilityFailure, Is.False);
     }
 
     [Test]
-    public void Unfound_objects_are_unexpected_even_when_cold()
+    public void Demo_cluster_warnings_still_allow_writes()
     {
         var (integrity, ceph, plane) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_ERR",
-            Summary = "unfound objects",
-            Checks = ["OBJECT_UNFOUND: unfound objects"]
-        };
-        ceph.HasUnfound = true;
-        ceph.HealthChecks = ["OBJECT_UNFOUND: unfound objects"];
+        ceph.Seeing(CephFixture.DemoWarnings);
+        Reach(plane, StoragePlaneState.Ready);
+
+        Assert.That(integrity.GetIntegrity().Predicates.WriteReady, Is.True);
+    }
+
+    // ---- durability --------------------------------------------------------
+
+    [TestCase(CephFixture.Unfound)]
+    [TestCase(CephFixture.Inconsistent)]
+    [TestCase(CephFixture.Incomplete)]
+    public void Durability_failures_are_unexpected_even_while_cold(string scenario)
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(scenario);
         plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
 
         var snapshot = integrity.GetIntegrity();
 
+        Assert.That(snapshot.DurabilityFailure, Is.True);
+        Assert.That(snapshot.Predicates.WriteReady, Is.False);
+        Assert.That(snapshot.Predicates.SleepSafe, Is.False);
+    }
+
+    [TestCase(CephFixture.Unfound)]
+    [TestCase(CephFixture.Inconsistent)]
+    public void Durability_failures_are_unexpected_while_waking(string scenario)
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(scenario);
+        plane.RequestWake(OperationIdRules.Create().Value, "operator");
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Waking));
+        Assert.That(snapshot.DurabilityFailure, Is.True);
+    }
+
+    /// <summary>
+    /// Only the damage checks are marked durability, not every check in the confirmation.
+    /// The unfound fixture also carries an ordinary <c>PG_DEGRADED</c>.
+    /// </summary>
+    [Test]
+    public void Only_the_damage_check_is_marked_durability()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.Seeing(CephFixture.Unfound);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Where(check => check.Durability).Select(check => check.Name),
+            Is.EquivalentTo(new[] { "OBJECT_UNFOUND" }));
+        Assert.That(snapshot.Checks.Select(check => check.Name), Does.Contain("PG_DEGRADED"));
+    }
+
+    // ---- controller-owned noout --------------------------------------------
+
+    /// <summary>
+    /// A scoped <c>noout</c> ColdCeph set itself is expected. It is expected because
+    /// StoragePlane holds the record, not because the check has a particular name — Ceph reports
+    /// a group flag under <c>OSD_FLAGS</c> and a cluster-wide one under <c>OSDMAP_FLAGS</c>.
+    /// </summary>
+    [TestCase(CephFixture.ScopedNoout)]
+    [TestCase(CephFixture.ClusterNoout)]
+    public void Noout_is_expected_when_storage_plane_owns_the_flag(string scenario)
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(scenario);
+        ReachSleeping(plane);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(plane.ListOwnedNoout().Select(record => record.Scope), Does.Contain("hdd-osds"));
+        Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
+        Assert.That(snapshot.Predicates.SleepSafe, Is.True);
+    }
+
+    /// <summary>
+    /// The same flag with no controller-owned record is somebody else's, and the invariant is
+    /// that ColdCeph only clears what it recorded. It must not be normalised away.
+    /// </summary>
+    [TestCase(CephFixture.ScopedNoout)]
+    [TestCase(CephFixture.ClusterNoout)]
+    public void Noout_is_unexpected_when_storage_plane_owns_nothing(string scenario)
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(scenario);
+        Reach(plane, StoragePlaneState.Cold);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(plane.ListOwnedNoout(), Is.Empty);
         Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
+        Assert.That(snapshot.Predicates.WriteReady, Is.False);
+    }
+
+    [Test]
+    public void A_flag_other_than_noout_stays_unexpected_even_when_noout_is_owned()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(CephFixture.OtherFlag);
+        ReachSleeping(plane);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Single().Detail, Does.Contain("noup"));
+        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
+    }
+
+    // ---- readiness ---------------------------------------------------------
+
+    [Test]
+    public void A_healthy_ready_cluster_is_write_ready_and_sleep_safe()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(CephFixture.Healthy);
+        Reach(plane, StoragePlaneState.Ready);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Predicates.WriteReady, Is.True);
+        Assert.That(snapshot.Predicates.SleepSafe, Is.True);
+    }
+
+    /// <summary>
+    /// Recovery means reduced redundancy, not unreadable data, so reads keep flowing while
+    /// writes and sleep wait. Classifying PG_DEGRADED as unexpected closed reads for the whole
+    /// of every recovery window.
+    /// </summary>
+    [Test]
+    public void Recovery_keeps_reads_open()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(CephFixture.Recovering);
+        Reach(plane, StoragePlaneState.Ready);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
+        Assert.That(snapshot.Predicates.ReadReady, Is.True);
+    }
+
+    /// <summary>
+    /// Unavailable data is the opposite case: outside a cold phase it closes reads.
+    /// </summary>
+    [Test]
+    public void Unavailable_pgs_while_ready_close_reads()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(CephFixture.ColdOsdsDown);
+        Reach(plane, StoragePlaneState.Ready);
+
+        var snapshot = integrity.GetIntegrity();
+
+        Assert.That(snapshot.Checks.Select(check => check.Name), Does.Contain("PG_AVAILABILITY"));
+        Assert.That(snapshot.Predicates.ReadReady, Is.False);
+    }
+
+    [Test]
+    public void Recovery_holds_writes_and_refuses_sleep()
+    {
+        var (integrity, ceph, plane) = Create();
+        ceph.Seeing(CephFixture.Recovering);
+        Reach(plane, StoragePlaneState.Ready);
+
+        var snapshot = integrity.GetIntegrity();
+
         Assert.That(snapshot.Predicates.WriteReady, Is.False);
         Assert.That(snapshot.Predicates.SleepSafe, Is.False);
     }
 
     [Test]
-    public void Controller_owned_noout_flags_are_expected_when_ready()
+    public void Losing_quorum_closes_reads_and_writes()
     {
         var (integrity, ceph, plane) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_WARN",
-            Summary = "noout flag(s) set",
-            Checks = ["OSDMAP_FLAGS: noout flag(s) set"]
-        };
-        ceph.HealthChecks = ["OSDMAP_FLAGS: noout flag(s) set"];
-        var operationId = OperationIdRules.Create().Value;
-        plane.RequestWake(operationId, "operator");
-        plane.EnterReady(operationId);
+        ceph.Seeing(CephFixture.NoQuorum);
+        Reach(plane, StoragePlaneState.Ready);
 
         var snapshot = integrity.GetIntegrity();
 
-        Assert.That(snapshot.Checks.All(check => check.Classification == HealthClassification.ExpectedCold), Is.True);
-        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.False);
-    }
-
-    [Test]
-    public void Other_osdmap_flags_remain_unexpected_when_ready()
-    {
-        var (integrity, ceph, plane) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_WARN",
-            Summary = "noup flag(s) set",
-            Checks = ["OSDMAP_FLAGS: noup flag(s) set"]
-        };
-        ceph.HealthChecks = ["OSDMAP_FLAGS: noup flag(s) set"];
-        var operationId = OperationIdRules.Create().Value;
-        plane.RequestWake(operationId, "operator");
-        plane.EnterReady(operationId);
-
-        var snapshot = integrity.GetIntegrity();
-
-        Assert.That(snapshot.Checks.Any(check => check.Classification == HealthClassification.Unexpected), Is.True);
-    }
-
-    [Test]
-    public void Write_ready_requires_clean_pgs_and_fails_closed_on_recovery()
-    {
-        var (integrity, ceph, _) = Create();
-        ceph.PgsClean = false;
-        ceph.HasRecoveryOrBackfill = true;
-
-        var snapshot = integrity.GetIntegrity();
-
+        Assert.That(snapshot.Predicates.ControlPlaneAvailable, Is.False);
+        Assert.That(snapshot.Predicates.ReadReady, Is.False);
         Assert.That(snapshot.Predicates.WriteReady, Is.False);
     }
 
-    [Test]
-    public void Sleep_safe_does_not_consult_ok_to_stop()
-    {
-        var (integrity, _, _) = Create();
-        var snapshot = integrity.GetIntegrity();
+    // ---- one confirmation per request --------------------------------------
 
-        Assert.That(snapshot.Predicates.SleepSafe, Is.True);
-        Assert.That(snapshot.Raw.Summary, Does.Not.Contain("ok-to-stop"));
+    [Test]
+    public void One_get_is_one_confirmation()
+    {
+        var (integrity, ceph, _) = Create();
+
+        _ = integrity.GetIntegrity();
+
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(1));
     }
 
     [Test]
-    public void Raw_health_reports_the_ceph_status_chip()
-    {
-        var (integrity, ceph, _) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_WARN",
-            Summary = "too few PGs",
-            Checks = ["TOO_FEW_PGS: too few PGs"]
-        };
-
-        _ = integrity.GetIntegrity();
-        var raw = integrity.GetRawHealth();
-
-        Assert.That(raw.Status, Is.EqualTo("HEALTH_WARN"));
-    }
-
-    [Test]
-    public void Raw_health_does_not_rewrite_err_as_ok()
-    {
-        var (integrity, ceph, _) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_ERR",
-            Summary = "1 osds down",
-            Checks = ["OSD_DOWN: 1 osds down"]
-        };
-
-        _ = integrity.GetIntegrity();
-        var raw = integrity.GetRawHealth();
-
-        Assert.That(raw.Status, Is.Not.EqualTo("HEALTH_OK"));
-        Assert.That(raw.Status, Is.EqualTo("HEALTH_ERR"));
-    }
-
-    [Test]
-    public void Raw_health_reuses_the_last_integrity_snapshot()
+    public void Reading_the_last_snapshot_does_not_confirm_again()
     {
         var (integrity, ceph, _) = Create();
         _ = integrity.GetIntegrity();
-        var calls = ceph.HealthDetailCalls;
 
+        _ = integrity.GetLastIntegrity();
         _ = integrity.GetRawHealth();
 
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(calls));
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(1));
     }
 
     [Test]
-    public void Raw_health_does_not_fetch_when_no_snapshot_exists()
+    public void The_last_snapshot_before_any_confirmation_is_unavailable_and_reaches_no_further()
     {
         var (integrity, ceph, _) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_ERR",
-            Summary = "1 osds down",
-            Checks = ["OSD_DOWN: 1 osds down"]
-        };
+        ceph.Seeing(CephFixture.Unfound);
 
-        var raw = integrity.GetRawHealth();
+        var snapshot = integrity.GetLastIntegrity();
 
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(0));
-        Assert.That(raw.Status, Is.EqualTo("UNAVAILABLE"));
-        Assert.That(raw.Status, Is.Not.EqualTo("HEALTH_ERR"));
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(0));
+        Assert.That(snapshot.Raw.Status, Is.EqualTo("UNAVAILABLE"));
+        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("HEALTH_ERR"));
+        Assert.That(snapshot.DurabilityFailure, Is.False);
     }
 
     [Test]
-    public void GetIntegrity_when_ceph_throws_is_unavailable()
+    public void The_last_snapshot_after_a_confirmation_is_that_confirmation()
     {
         var (integrity, ceph, _) = Create();
-        ceph.ThrowOnHealth = true;
+        ceph.Seeing(CephFixture.NearFull);
+
+        _ = integrity.GetIntegrity();
+        var snapshot = integrity.GetLastIntegrity();
+
+        Assert.That(snapshot.Checks.Select(check => check.Name), Does.Contain("OSD_NEARFULL"));
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(1));
+    }
+
+    // ---- failure -----------------------------------------------------------
+
+    [Test]
+    public void An_unreachable_monitor_is_unavailable_and_grants_nothing()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.ThrowOnObservation = true;
 
         var snapshot = integrity.GetIntegrity();
 
         Assert.That(snapshot.Raw.Status, Is.EqualTo("UNAVAILABLE"));
+        Assert.That(snapshot.Predicates.ReadReady, Is.False);
         Assert.That(snapshot.Predicates.WriteReady, Is.False);
+        Assert.That(snapshot.Predicates.SleepSafe, Is.False);
+    }
+
+    /// <summary>
+    /// An unreachable monitor must not read as a durability failure: that would FAULT the
+    /// appliance for a network problem, and FAULTED does not clear on its own.
+    /// </summary>
+    [Test]
+    public void An_unreachable_monitor_is_not_a_durability_failure()
+    {
+        var (integrity, ceph, _) = Create();
+        ceph.ThrowOnObservation = true;
+
+        Assert.That(integrity.GetIntegrity().DurabilityFailure, Is.False);
     }
 
     [Test]
-    public void GetIntegrity_when_ceph_answers_is_not_unavailable()
+    public void A_reachable_monitor_is_not_unavailable()
     {
-        var (integrity, ceph, _) = Create();
-        ceph.ThrowOnHealth = false;
+        var (integrity, _, _) = Create();
 
-        var snapshot = integrity.GetIntegrity();
-
-        Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_OK"));
-        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("UNAVAILABLE"));
+        Assert.That(integrity.GetIntegrity().Raw.Status, Is.EqualTo("HEALTH_OK"));
     }
 
     [Test]
-    public void GetIntegrity_includes_capacity_from_the_same_confirmation()
+    public void Capacity_comes_from_the_same_confirmation()
     {
-        var (integrity, ceph, _) = Create();
-        ceph.Capacity = new ClusterCapacityDto
-        {
-            TotalBytes = 3000,
-            UsedBytes = 1000,
-            AvailableBytes = 2000
-        };
+        var (integrity, _, _) = Create();
 
         var snapshot = integrity.GetIntegrity();
 
-        Assert.That(snapshot.Capacity?.TotalBytes, Is.EqualTo(3000));
+        Assert.That(snapshot.Capacity?.TotalBytes, Is.EqualTo(3_000_000_000));
         Assert.That(snapshot.CapacityUnavailableReason, Is.Null);
     }
 
     [Test]
-    public void Capacity_failure_does_not_hide_a_successful_integrity_confirmation()
+    public void A_capacity_failure_does_not_hide_a_successful_confirmation()
     {
         var (integrity, ceph, _) = Create();
-        ceph.ThrowOnCapacity = true;
+        ceph.Observation = ceph.Observation with
+        {
+            Capacity = null,
+            CapacityUnavailableReason = "capacity unavailable"
+        };
 
         var snapshot = integrity.GetIntegrity();
 
@@ -274,40 +391,10 @@ public sealed class IntegrityServiceTests
         Assert.That(snapshot.CapacityUnavailableReason, Is.EqualTo("capacity unavailable"));
     }
 
-    [Test]
-    public void GetLastIntegrity_does_not_query_ceph()
-    {
-        var (integrity, ceph, _) = Create();
-        ceph.Health = new CephHealthRaw
-        {
-            Status = "HEALTH_ERR",
-            Summary = "1 osds down",
-            Checks = ["OSD_DOWN: 1 osds down"]
-        };
-
-        var snapshot = integrity.GetLastIntegrity();
-
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(0));
-        Assert.That(snapshot.Raw.Status, Is.EqualTo("UNAVAILABLE"));
-        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("HEALTH_ERR"));
-    }
+    // ---- osd membership overlay --------------------------------------------
 
     [Test]
-    public void GetLastIntegrity_returns_the_snapshot_from_the_last_get()
-    {
-        var (integrity, ceph, _) = Create();
-        _ = integrity.GetIntegrity();
-        var calls = ceph.HealthDetailCalls;
-
-        var snapshot = integrity.GetLastIntegrity();
-
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(calls));
-        Assert.That(snapshot.Raw.Status, Is.EqualTo("HEALTH_OK"));
-        Assert.That(snapshot.Raw.Status, Is.Not.EqualTo("UNAVAILABLE"));
-    }
-
-    [Test]
-    public void ListOsdMembership_returns_ceph_map_rows()
+    public void Membership_returns_the_ceph_map_rows()
     {
         var (integrity, ceph, _) = Create();
         ceph.OsdMembership = new Dictionary<int, OsdMembershipDto>
@@ -315,30 +402,76 @@ public sealed class IntegrityServiceTests
             [0] = new() { OsdId = 0, Up = true, In = true }
         };
 
-        var membership = integrity.ListOsdMembership();
+        var membership = integrity.ListOsdMembership(out var reason);
 
         Assert.That(membership[0].Up, Is.True);
+        Assert.That(reason, Is.Null);
     }
 
+    /// <summary>
+    /// An unreachable monitor and a cluster with no OSDs both yield an empty overlay, so the
+    /// reason distinguishes them. Without it the operator cannot tell "Ceph did not answer"
+    /// from "there are no OSDs".
+    /// </summary>
     [Test]
-    public void ListOsdMembership_is_empty_when_ceph_throws()
+    public void An_unreachable_monitor_says_why_the_overlay_is_empty()
     {
         var (integrity, ceph, _) = Create();
         ceph.ThrowOnMembership = true;
-        ceph.OsdMembership = new Dictionary<int, OsdMembershipDto>
-        {
-            [0] = new() { OsdId = 0, Up = true, In = true }
-        };
 
-        Assert.That(integrity.ListOsdMembership(), Is.Empty);
+        var membership = integrity.ListOsdMembership(out var reason);
+
+        Assert.That(membership, Is.Empty);
+        Assert.That(reason, Is.EqualTo("ceph unavailable"));
+    }
+
+    [Test]
+    public void A_cluster_with_no_osds_gives_an_empty_overlay_and_no_reason()
+    {
+        var (integrity, _, _) = Create();
+
+        var membership = integrity.ListOsdMembership(out var reason);
+
+        Assert.That(membership, Is.Empty);
+        Assert.That(reason, Is.Null);
+    }
+
+    /// <summary>
+    /// Drives the plane to SLEEPING, which is where StoragePlane actually takes ownership of
+    /// the scoped noout flag.
+    /// </summary>
+    private static void ReachSleeping(StoragePlaneService plane)
+    {
+        var operationId = OperationIdRules.Create().Value;
+        plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+        plane.RequestSleep(operationId, "operator");
+        plane.EnterSleeping(operationId);
+    }
+
+    private static void Reach(StoragePlaneService plane, StoragePlaneState state)
+    {
+        if (state == StoragePlaneState.Cold)
+        {
+            plane.MarkObserved(StoragePlaneState.Cold, "startup-reconcile");
+            return;
+        }
+
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        if (state == StoragePlaneState.Ready)
+            plane.EnterReady(operationId);
     }
 
     private static (IntegrityService Integrity, FakeCephQueryProvider Ceph, StoragePlaneService Plane) Create()
     {
         var clock = new FakeClock();
-        var plane = new StoragePlaneService(new MemoryStoragePlaneRepository(), new RecordingNooutProvider(), clock, new ControlConfig());
+        var plane = new StoragePlaneService(
+            new MemoryStoragePlaneRepository(), new RecordingNooutProvider(), clock, new ControlConfig());
         var ceph = new FakeCephQueryProvider();
-        var integrity = new IntegrityService(ceph, new MemoryIntegrityRepository(), new StoragePlaneController(plane), clock);
+        var integrity = new IntegrityService(
+            ceph, new MemoryIntegrityRepository(), new StoragePlaneController(plane), clock);
         return (integrity, ceph, plane);
     }
 }

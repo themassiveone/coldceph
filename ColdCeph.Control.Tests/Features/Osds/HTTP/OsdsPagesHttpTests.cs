@@ -94,7 +94,7 @@ public sealed class OsdsPagesHttpTests
         Assert.That(html, Does.Contain("up / in"));
         Assert.That(html, Does.Contain("down / in"));
         Assert.That(factory.Ceph.MembershipCalls, Is.EqualTo(1));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     private static HostOsdsObservationDto Observation(string hostId, int osdId)
