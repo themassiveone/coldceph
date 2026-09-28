@@ -28,11 +28,12 @@ These files were **written against Ceph Quincy's documented JSON schema, not cap
 a running cluster.** They are trimmed to the fields ColdCeph reads plus enough surrounding
 context to stay recognisable. Treat them as a faithful model that still needs confirming.
 
-`CephSchemaTests` in `ColdCeph.E2E.Tests` is what closes that gap: it runs the real
+`CephClusterTests.Control_ceph_cli_runs_against_the_cluster` in `ColdCeph.E2E.Tests` is what
+closes that gap. Through `CephAdapter.SeeConfirmationShapeMatchesFixtures` it runs the real
 provider against the Testcontainers cluster and asserts the live output parses to the same
 *shape* these fixtures do — check names matching Ceph's identifier convention, a non-empty
-`pgs_by_state`, a named quorum, numeric `up`/`in`. If Ceph changes its schema, or a fixture
-here was written wrong, that test fails and names the field.
+`pgs_by_state`, a named quorum, positive capacity. If Ceph changes its schema, or a fixture
+here was written wrong, that journey fails.
 
 When you do have a cluster in front of you, prefer re-capturing:
 
