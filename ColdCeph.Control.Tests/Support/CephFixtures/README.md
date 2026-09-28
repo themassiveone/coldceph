@@ -6,10 +6,11 @@ confirmation issues, named after the command:
 | File | Command |
 |------|---------|
 | `health-detail.json` | `ceph --format json health detail` |
-| `status.json` | `ceph --format json status` |
+| `status.json` | `ceph --format json status` — PG states *and* capacity, both from `pgmap` |
 | `quorum_status.json` | `ceph --format json quorum_status` |
-| `pg-stat.json` | `ceph --format json pg stat` |
 | `osd-dump.json` | `ceph --format json osd dump` |
+
+A confirmation is three invocations: `health detail`, `status`, `quorum_status`.
 
 ## Why this exists
 
@@ -34,6 +35,20 @@ provider against the Testcontainers cluster and asserts the live output parses t
 *shape* these fixtures do — check names matching Ceph's identifier convention, a non-empty
 `pgs_by_state`, a named quorum, positive capacity. If Ceph changes its schema, or a fixture
 here was written wrong, that journey fails.
+
+### A fixture that was wrong, and what caught it
+
+PG states were first modelled on `ceph pg stat`, whose JSON did not carry `pgs_by_state` where the
+provider looked. Against the live cluster that produced an empty state list, and because an empty
+list must not read as ready, every readiness predicate was false on a perfectly healthy
+`HEALTH_OK` cluster — reads and writes both refused, with nothing in the health text to explain it.
+
+`SeePgStatesParsed` is what caught it: it asserts the live output parses to a non-empty set of
+recognisable state tokens, which is exactly the assertion a fixture cannot make on its own. States
+now come from `status`'s `pgmap`, the same object capacity was already being read from successfully.
+
+That is the whole argument for the live shape assertions. Treat the provenance warning above as
+load-bearing.
 
 When you do have a cluster in front of you, prefer re-capturing:
 

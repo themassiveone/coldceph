@@ -9,8 +9,9 @@ namespace ColdCeph.Control.Features.Integrity.Providers;
 /// <summary>
 /// Reads Ceph through the <c>ceph</c> CLI.
 /// <para>
-/// A confirmation is exactly four invocations — <c>health detail</c>, <c>status</c>,
-/// <c>quorum_status</c>, <c>pg stat</c> — issued once by <see cref="GetObservation"/>.
+/// A confirmation is exactly three invocations — <c>health detail</c>, <c>status</c> and
+/// <c>quorum_status</c> — issued once by <see cref="GetObservation"/>. PG states and capacity both
+/// come out of <c>status</c>'s <c>pgmap</c>, so neither needs a call of its own.
 /// There is no output cache: the single-confirmation property comes from the shape of the
 /// call, not from a TTL that expires mid-confirmation on a slow cluster.
 /// </para>
@@ -33,18 +34,7 @@ public sealed class CephCliQueryProvider : ICephQueryProvider
     {
         var (health, checks) = ReadHealth();
         var quorum = ReadQuorumAvailable();
-        var pgStates = ReadPgStates();
-
-        ClusterCapacityDto? capacity = null;
-        string? capacityUnavailableReason = null;
-        try
-        {
-            capacity = ReadCapacity();
-        }
-        catch (Exception exception)
-        {
-            capacityUnavailableReason = exception.Message;
-        }
+        var (pgStates, capacity, capacityUnavailableReason) = ReadStatus();
 
         return new CephObservation
         {
@@ -113,24 +103,54 @@ public sealed class CephCliQueryProvider : ICephQueryProvider
         return false;
     }
 
-    private IReadOnlyList<PgStateCount> ReadPgStates()
+    /// <summary>
+    /// Reads PG states and capacity from one <c>status</c> call: both live in its <c>pgmap</c>.
+    /// <para>
+    /// PG states used to come from <c>pg stat</c>, whose JSON did not carry <c>pgs_by_state</c>
+    /// where this expected it. The result was an empty state list, and because an empty list must
+    /// not read as ready, every readiness predicate was false on a perfectly healthy cluster.
+    /// Capacity was already being read from <c>pgmap</c> successfully, so this uses the field that
+    /// is known to be there — and drops an invocation from every confirmation.
+    /// </para>
+    /// <para>
+    /// A capacity failure does not lose the PG states: they are independent readings of one
+    /// document, and holding the plane closed because a byte count was missing would be wrong.
+    /// </para>
+    /// </summary>
+    private (IReadOnlyList<PgStateCount> PgStates, ClusterCapacityDto? Capacity, string? Reason) ReadStatus()
     {
-        using var document = Parse(Run("pg", "stat"));
-        return ParsePgStates(document.RootElement);
-    }
-
-    private ClusterCapacityDto ReadCapacity()
-    {
-        using var document = Parse(Run("status"));
-        if (!document.RootElement.TryGetProperty("pgmap", out var pgmap))
-            throw new InvalidOperationException("Ceph status did not include capacity information.");
-
-        return new ClusterCapacityDto
+        JsonDocument document;
+        try
         {
-            TotalBytes = ReadNonNegativeInt64(pgmap, "bytes_total"),
-            UsedBytes = ReadNonNegativeInt64(pgmap, "bytes_used"),
-            AvailableBytes = ReadNonNegativeInt64(pgmap, "bytes_avail")
-        };
+            document = Parse(Run("status"));
+        }
+        catch (Exception exception)
+        {
+            // Without status there is no PG information, and no PG information must not read as
+            // ready, so an empty list is the fail-closed answer.
+            return ([], null, exception.Message);
+        }
+
+        using (document)
+        {
+            if (!document.RootElement.TryGetProperty("pgmap", out var pgmap))
+                return ([], null, "Ceph status did not include a pgmap.");
+
+            var states = ParsePgStates(pgmap);
+            try
+            {
+                return (states, new ClusterCapacityDto
+                {
+                    TotalBytes = ReadNonNegativeInt64(pgmap, "bytes_total"),
+                    UsedBytes = ReadNonNegativeInt64(pgmap, "bytes_used"),
+                    AvailableBytes = ReadNonNegativeInt64(pgmap, "bytes_avail")
+                }, null);
+            }
+            catch (Exception exception)
+            {
+                return (states, null, exception.Message);
+            }
+        }
     }
 
     internal static IReadOnlyList<PgStateCount> ParsePgStates(JsonElement root)

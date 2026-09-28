@@ -239,8 +239,11 @@ and the E2E cluster was forced to `HEALTH_OK` before any test ran. See
   inventory comes from Node push on enroll and local change. Reconcilers read Node-pushed state
   and the last Integrity snapshot; they do not invoke the Ceph CLI.
 - One confirmation is **one pass**: `ICephQueryProvider.GetObservation()` issues `health detail`,
-  `status`, `quorum_status` and `pg stat` once each and returns a `CephObservation`; `CephSignals`
-  derives every readiness and durability signal from it. That property is structural, not a cache —
+  `status` and `quorum_status` once each and returns a `CephObservation`; `CephSignals` derives every
+  readiness and durability signal from it. PG states and capacity both come from `status`'s `pgmap`,
+  so neither needs a call of its own — and reading PG states from `pg stat` instead gave an empty
+  state list against a real cluster, which correctly but uselessly held every predicate closed on a
+  HEALTH_OK cluster. That property is structural, not a cache —
   a TTL cache expires mid-confirmation on exactly the slow cluster where it matters. `osd dump` is a
   separate confirmation, serving the Osds list GET. Control’s process runner admits **one child
   process at a time**, and every child has a timeout and is killed on expiry.

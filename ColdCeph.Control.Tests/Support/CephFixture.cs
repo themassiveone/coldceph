@@ -35,7 +35,6 @@ public static class CephFixture
     [
         ("health detail", "health-detail.json"),
         ("quorum_status", "quorum_status.json"),
-        ("pg stat", "pg-stat.json"),
         ("status", "status.json"),
         ("osd dump", "osd-dump.json")
     ];

@@ -14,8 +14,12 @@ public sealed class CephCliQueryProviderTests
 {
     // ---- argv ----------------------------------------------------------------
 
+    /// <summary>
+    /// Three invocations, not four: PG states and capacity both come out of <c>status</c>'s
+    /// <c>pgmap</c>, so neither needs a call of its own.
+    /// </summary>
     [Test]
-    public void Confirmation_issues_json_health_quorum_pg_and_status_once_each()
+    public void Confirmation_issues_json_health_quorum_and_status_once_each()
     {
         var provider = CephFixture.Provider(CephFixture.Healthy, out var runner);
 
@@ -23,9 +27,11 @@ public sealed class CephCliQueryProviderTests
 
         Assert.That(runner.CountOf("health detail"), Is.EqualTo(1));
         Assert.That(runner.CountOf("quorum_status"), Is.EqualTo(1));
-        Assert.That(runner.CountOf("pg stat"), Is.EqualTo(1));
+        Assert.That(runner.CountOf("status"), Is.EqualTo(2), "quorum_status also matches 'status'");
+        Assert.That(runner.Commands, Has.Count.EqualTo(3));
         Assert.That(runner.Commands, Has.All.Contains("--format json"));
         Assert.That(runner.Commands, Has.None.Contains("ok-to-stop"));
+        Assert.That(runner.Commands, Has.None.Contains("pg stat"));
     }
 
     /// <summary>
@@ -157,7 +163,7 @@ public sealed class CephCliQueryProviderTests
     [TestCase(CephFixture.Unfound)]
     public void Pgs_are_not_clean_when_any_group_is_not_clean(string scenario)
     {
-        var json = CephFixture.Read(scenario, "pg-stat.json");
+        var json = CephFixture.Read(scenario, "status.json");
 
         Assert.That(json, Does.Contain("active+clean"));
         Assert.That(CephFixture.Signals(scenario).PgsClean, Is.False);
@@ -204,16 +210,52 @@ public sealed class CephCliQueryProviderTests
         Assert.That(signals.ToPredicates(osdPlaneExpected: true).SleepSafe, Is.False);
     }
 
+    /// <summary>
+    /// A confirmation that reports no PG states must not read as ready. This is the case that was
+    /// silently true against the live cluster: PG states were read from a command whose JSON did not
+    /// carry them, so every readiness predicate was false on a healthy HEALTH_OK cluster.
+    /// </summary>
     [Test]
     public void A_confirmation_reporting_no_pgs_is_neither_active_nor_clean()
     {
-        var runner = CephFixture.Runner(CephFixture.Healthy).Answer("pg stat", """{"num_pgs":0}""");
+        var runner = CephFixture.Runner(CephFixture.Healthy)
+            .Answer("status", """{"pgmap":{"num_pgs":0,"bytes_total":3000,"bytes_used":1000,"bytes_avail":2000}}""");
         var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
 
         var signals = CephSignals.From(provider.GetObservation());
 
         Assert.That(signals.PgsActive, Is.False);
         Assert.That(signals.PgsClean, Is.False);
+    }
+
+    /// <summary>Capacity and PG states are independent readings of one document.</summary>
+    [Test]
+    public void A_status_without_capacity_still_yields_pg_states()
+    {
+        var runner = CephFixture.Runner(CephFixture.Healthy)
+            .Answer("status", """{"pgmap":{"pgs_by_state":[{"state_name":"active+clean","count":4}]}}""");
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
+
+        var observation = provider.GetObservation();
+
+        Assert.That(observation.PgStates, Has.Count.EqualTo(1));
+        Assert.That(observation.Capacity, Is.Null);
+        Assert.That(observation.CapacityUnavailableReason, Is.Not.Null);
+        Assert.That(CephSignals.From(observation).PgsClean, Is.True);
+    }
+
+    /// <summary>A status the provider cannot read at all fails closed on PG state.</summary>
+    [Test]
+    public void A_failing_status_call_leaves_no_pg_states()
+    {
+        var runner = CephFixture.Runner(CephFixture.Healthy).Fail("status", "connection timed out");
+        var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
+
+        var observation = provider.GetObservation();
+
+        Assert.That(observation.PgStates, Is.Empty);
+        Assert.That(observation.CapacityUnavailableReason, Does.Contain("timed out"));
+        Assert.That(CephSignals.From(observation).PgsActive, Is.False);
     }
 
     // ---- durability signals -------------------------------------------------
@@ -459,7 +501,7 @@ public sealed class CephCliQueryProviderTests
         var runner = CephFixture.Runner(CephFixture.Healthy)
             .Answer("health detail", "")
             .Answer("quorum_status", "")
-            .Answer("pg stat", "");
+            .Answer("status", "");
         var provider = new CephCliQueryProvider(new ControlConfig { CephBinary = "ceph" }, runner);
 
         var observation = provider.GetObservation();
