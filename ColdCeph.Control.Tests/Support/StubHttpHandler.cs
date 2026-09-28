@@ -31,11 +31,28 @@ public sealed class StubHttpHandler : HttpMessageHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
-        LastRequest = request;
-        Requests.Add(request);
+        Capture(request);
         if (request.Content is not null)
             LastBody = await request.Content.ReadAsStringAsync(cancellationToken);
         return _respond(request);
+    }
+
+    /// <summary>
+    /// RgwS3Client sends synchronously, and HttpClient does not bridge to SendAsync for a custom
+    /// handler — it throws NotSupportedException unless this is overridden too.
+    /// </summary>
+    protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Capture(request);
+        if (request.Content is not null)
+            LastBody = request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+        return _respond(request);
+    }
+
+    private void Capture(HttpRequestMessage request)
+    {
+        LastRequest = request;
+        Requests.Add(request);
     }
 
     public IEnumerable<string> HeaderValues(string name)

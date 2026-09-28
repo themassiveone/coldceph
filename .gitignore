@@ -16,3 +16,4 @@ tmp/
 .agent-up-dev/
 **/TestResults/
 *.DotSettings.user
+artifacts/

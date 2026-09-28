@@ -4,19 +4,36 @@ using System.Security.Cryptography;
 using System.Text;
 using ColdCeph.Control.Composition;
 using ColdCeph.Control.Features.S3.Interfaces;
+using ColdCeph.Control.Shared;
 using ColdCeph.Core.Features.S3.DTOs;
 
 namespace ColdCeph.Control.Features.S3.Providers;
 
+/// <summary>
+/// The operator Buckets viewer's RGW client, signing its own SigV4 requests.
+/// <para>
+/// The signature covers the method, the canonical path, the canonical query and three headers, so
+/// changing any of them has to change the signature. The clock is injected because the timestamp
+/// is one of those inputs: without it the signature cannot be pinned, and a signer that ignored
+/// its inputs would look the same as one that did not.
+/// </para>
+/// </summary>
 public sealed class RgwS3Client : IRgwObjectStore
 {
     private readonly IHttpClientFactory _factory;
     private readonly ControlConfig _config;
+    private readonly IClock _clock;
 
     public RgwS3Client(IHttpClientFactory factory, ControlConfig config)
+        : this(factory, config, new SystemClock())
+    {
+    }
+
+    public RgwS3Client(IHttpClientFactory factory, ControlConfig config, IClock clock)
     {
         _factory = factory;
         _config = config;
+        _clock = clock;
     }
 
     public IReadOnlyList<S3BucketDto> ListBuckets()
@@ -45,18 +62,32 @@ public sealed class RgwS3Client : IRgwObjectStore
     private static string ObjectPath(string bucket, string key)
         => "/" + Uri.EscapeDataString(bucket) + "/" + string.Join('/', key.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
 
+    /// <summary>
+    /// Builds the target URI without letting it re-canonicalise the path.
+    /// <para>
+    /// The canonical path is part of the signature, so the bytes on the wire have to be the bytes
+    /// that were signed. <c>UriBuilder</c> and the ordinary <c>Uri</c> constructor both re-process
+    /// percent-escapes, which can leave the request path and the signed path disagreeing — and the
+    /// only symptom is a 403 from RGW with nothing else to go on.
+    /// </para>
+    /// </summary>
+    internal Uri Target(string path, string? query)
+    {
+        var authority = _config.RgwEndpoint.GetLeftPart(UriPartial.Authority);
+        var suffix = string.IsNullOrEmpty(query) ? string.Empty : "?" + query;
+        return new Uri(authority + path + suffix, new UriCreationOptions
+        {
+            DangerousDisablePathAndQueryCanonicalization = true
+        });
+    }
+
     private string Send(string method, string path, string? query, byte[]? body)
         => Encoding.UTF8.GetString(SendBytes(method, path, query, body));
 
     private byte[] SendBytes(string method, string path, string? query, byte[]? body, string? contentType = null)
     {
         var client = _factory.CreateClient("rgw");
-        var builder = new UriBuilder(_config.RgwEndpoint)
-        {
-            Path = path,
-            Query = query ?? string.Empty
-        };
-        using var request = new HttpRequestMessage(new HttpMethod(method), builder.Uri);
+        using var request = new HttpRequestMessage(new HttpMethod(method), Target(path, query));
         if (body is not null)
             request.Content = new ByteArrayContent(body);
         if (!string.IsNullOrWhiteSpace(contentType) && request.Content is not null)
@@ -71,7 +102,7 @@ public sealed class RgwS3Client : IRgwObjectStore
 
     private void Sign(HttpRequestMessage request, string path, string query, byte[]? body)
     {
-        var now = DateTime.UtcNow;
+        var now = _clock.UtcNow.UtcDateTime;
         var amzDate = now.ToString("yyyyMMddTHHmmssZ", CultureInfo.InvariantCulture);
         var dateStamp = now.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         const string payloadHash = "UNSIGNED-PAYLOAD";
