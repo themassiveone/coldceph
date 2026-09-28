@@ -291,24 +291,27 @@ public sealed class OperatorAdapter : XceptoAdapter
     /// checks behind it.
     /// </para>
     /// </summary>
-    public void SeeConfirmationAdmitsReadsAndWrites()
+    public void SeeConfirmationAdmitsReads() => AddAdmissionStep("reads", "readReady");
+
+    /// <summary>
+    /// Write admission is a stricter gate than read admission — spec §27.4 requires PGs
+    /// <c>active+clean</c> and no degraded objects — so a read-only journey must not be held to it.
+    /// </summary>
+    public void SeeConfirmationAdmitsWrites() => AddAdmissionStep("writes", "writeReady");
+
+    private void AddAdmissionStep(string what, string predicate)
     {
-        AddStep(new ExpectationStepState("the live confirmation admits reads and writes", async () =>
+        AddStep(new ExpectationStepState($"the live confirmation admits {what}", async () =>
         {
             var snapshot = await ConfirmIntegrityAsync();
             if (snapshot is null)
                 return false;
-
-            var readReady = Flag(snapshot, "readReady");
-            var writeReady = Flag(snapshot, "writeReady");
-            if (readReady == true && writeReady == true)
+            if (Flag(snapshot, predicate) == true)
                 return true;
 
             throw new InvalidOperationException(
-                $"The cluster is READY but the confirmation does not admit "
-                + $"{(readReady == true ? string.Empty : "reads")}"
-                + $"{(readReady != true && writeReady != true ? " or " : string.Empty)}"
-                + $"{(writeReady == true ? string.Empty : "writes")}, so S3 answers 503. "
+                $"The cluster is READY but the confirmation does not admit {what} "
+                + $"({predicate} is false), so S3 answers 503. "
                 + $"Unexpected checks: {Describe(UnexpectedChecks(snapshot))}. "
                 + $"Predicates and checks: {snapshot}");
         }));

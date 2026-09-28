@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Docker.DotNet.Models;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -83,7 +84,54 @@ public sealed class CephCluster : IAsyncDisposable
         // until it has finished. Interfering here is what stopped it coming up.
         await WaitForRgwAsync(cancellationToken);
         NooutScope = await ReadOsdHostBucketAsync();
+        await SizePoolsForOneOsdAsync();
+        await WaitForCleanPgsAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Sets every pool to one replica, because this cluster has one OSD.
+    /// <para>
+    /// Spec §27.4 defines <c>write_ready</c> as read-ready AND PGs <c>active+clean</c> AND zero
+    /// degraded objects. A single-OSD cluster whose pools ask for three replicas sits permanently at
+    /// <c>active+undersized+degraded</c>: active, so reads work, but never clean — so ColdCeph
+    /// correctly refuses writes forever. That is the product working as specified, not a bug in it,
+    /// and the fix is to give the test a validly configured cluster rather than to relax a
+    /// durability gate to get a journey green.
+    /// </para>
+    /// <para>
+    /// This is not the same as the muting this harness used to do. Nothing here changes what
+    /// ColdCeph is told or what it concludes: the cluster is made genuinely clean, and the
+    /// classifier and predicates still see whatever Ceph actually reports.
+    /// </para>
+    /// </summary>
+    private async Task SizePoolsForOneOsdAsync()
+    {
+        var pools = (await CephAsync("osd", "pool", "ls"))
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var pool in pools)
+        {
+            // min_size first: lowering size below min_size is rejected.
+            _ = await TryCephAsync("osd", "pool", "set", pool, "min_size", "1");
+            _ = await TryCephAsync("osd", "pool", "set", pool, "size", "1", "--yes-i-really-mean-it");
+        }
+    }
+
+    /// <summary>
+    /// Waits for every PG to reach <c>active+clean</c>, which is what spec §27.4 requires before
+    /// ColdCeph will admit a write. Resizing pools moves data, so this has to settle before a
+    /// journey asserts anything about write admission.
+    /// </summary>
+    private async Task WaitForCleanPgsAsync(CancellationToken cancellationToken)
+        => await WaitFor(
+            "every PG active+clean",
+            async () =>
+            {
+                var json = await TryCephAsync("pg", "stat", "--format", "json");
+                return string.IsNullOrWhiteSpace(json) ? false : AllPgsClean(json);
+            },
+            TimeSpan.FromMinutes(3),
+            cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
@@ -136,6 +184,32 @@ public sealed class CephCluster : IAsyncDisposable
     /// Reads the CRUSH host bucket osd.0 sits under, so the noout scope names something real
     /// without changing the cluster's topology.
     /// </summary>
+    /// <summary>
+    /// Whether every <c>pgs_by_state</c> group carries both <c>active</c> and <c>clean</c>. Parsed
+    /// here rather than through Control's provider, which keeps its parser internal.
+    /// </summary>
+    private static bool AllPgsClean(string pgStatJson)
+    {
+        using var document = JsonDocument.Parse(pgStatJson);
+        if (!document.RootElement.TryGetProperty("pgs_by_state", out var states)
+            || states.ValueKind != JsonValueKind.Array
+            || states.GetArrayLength() == 0)
+            return false;
+
+        foreach (var state in states.EnumerateArray())
+        {
+            var name = state.TryGetProperty("state_name", out var node) ? node.GetString() : null;
+            if (name is null)
+                return false;
+            var tokens = name.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (!tokens.Contains("active", StringComparer.OrdinalIgnoreCase)
+                || !tokens.Contains("clean", StringComparer.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
+    }
+
     private async Task<string> ReadOsdHostBucketAsync()
     {
         var json = await CephAsync("osd", "find", "0", "--format", "json");

@@ -48,7 +48,7 @@ public sealed class S3AdmissionTests
 
             op.EnsureReady(scenario.OperatorPassword);
             op.SeeStoragePlane("Ready");
-            op.SeeConfirmationAdmitsReadsAndWrites();
+            op.SeeConfirmationAdmitsReads();
             s3.SeeMissingObjectIsNotFound();
         });
     }
@@ -72,7 +72,7 @@ public sealed class S3AdmissionTests
                 .Build();
 
             op.EnsureReady(scenario.OperatorPassword);
-            op.SeeConfirmationAdmitsReadsAndWrites();
+            op.SeeConfirmationAdmitsWrites();
             s3.SeeObjectRoundTrip();
             s3.SeeBucketListing();
         });
