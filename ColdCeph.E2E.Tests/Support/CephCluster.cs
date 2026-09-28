@@ -127,7 +127,10 @@ public sealed class CephCluster : IAsyncDisposable
             "every PG active+clean",
             async () =>
             {
-                var json = await TryCephAsync("pg", "stat", "--format", "json");
+                // From `status`, not `pg stat`: `pg stat --format json` does not carry
+                // pgs_by_state, which is the same trap that made the provider read no PG states
+                // at all and hold every readiness predicate closed on a healthy cluster.
+                var json = await TryCephAsync("status", "--format", "json");
                 return string.IsNullOrWhiteSpace(json) ? false : AllPgsClean(json);
             },
             TimeSpan.FromMinutes(3),
@@ -185,13 +188,14 @@ public sealed class CephCluster : IAsyncDisposable
     /// without changing the cluster's topology.
     /// </summary>
     /// <summary>
-    /// Whether every <c>pgs_by_state</c> group carries both <c>active</c> and <c>clean</c>. Parsed
-    /// here rather than through Control's provider, which keeps its parser internal.
+    /// Whether every <c>pgmap.pgs_by_state</c> group carries both <c>active</c> and <c>clean</c>.
+    /// Parsed here rather than through Control's provider, which keeps its parser internal.
     /// </summary>
-    private static bool AllPgsClean(string pgStatJson)
+    private static bool AllPgsClean(string statusJson)
     {
-        using var document = JsonDocument.Parse(pgStatJson);
-        if (!document.RootElement.TryGetProperty("pgs_by_state", out var states)
+        using var document = JsonDocument.Parse(statusJson);
+        if (!document.RootElement.TryGetProperty("pgmap", out var pgmap)
+            || !pgmap.TryGetProperty("pgs_by_state", out var states)
             || states.ValueKind != JsonValueKind.Array
             || states.GetArrayLength() == 0)
             return false;
@@ -260,8 +264,8 @@ public sealed class CephCluster : IAsyncDisposable
             var logs = await _container.GetLogsAsync();
             var combined = logs.Stdout + "\n" + logs.Stderr;
             var lines = combined.Split('\n');
-            parts.Add("--- container log (last 40 lines) ---");
-            parts.AddRange(lines.Skip(Math.Max(0, lines.Length - 40)));
+            parts.Add("--- container log (last 12 lines) ---");
+            parts.AddRange(lines.Skip(Math.Max(0, lines.Length - 12)));
         }
         catch (Exception exception)
         {
