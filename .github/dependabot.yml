@@ -1,0 +1,50 @@
+# Weekly version updates. Security updates are independent of this schedule.
+#
+# Ceph images are not listed: compose and E2E pin
+# quay.io/ceph/daemon:v7.0.3-stable-7.0-quincy-centos-stream8 because later
+# daemon tags (including latest-reef) drop the ceph-container entrypoints.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      nuget-test:
+        patterns:
+          - "NUnit*"
+          - "coverlet.*"
+          - "TngTech.*"
+          - "Xcepto"
+          - "Testcontainers*"
+          - "Microsoft.NET.Test.Sdk"
+          - "Microsoft.AspNetCore.Mvc.Testing"
+          - "Microsoft.CodeAnalysis.*"
+      nuget:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

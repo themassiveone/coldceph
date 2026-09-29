@@ -134,7 +134,8 @@ Local compose + operator HTML. Do not `docker compose up` or walk the UI by hand
 Screenshots write under `.git/coldceph/debug/` (`WEB_PORT` /
 `COLDCEPH_OPERATOR_URL`).
 
-CI runs both jobs. The E2E job does not start `compose.yaml`; Testcontainers owns the cluster.
-`compose.yaml` is only for local IDE getting-started against a long-lived multi-host cluster.
+CI runs both jobs. Dependabot opens weekly PRs for NuGet, npm, and GitHub Actions. The E2E job
+does not start `compose.yaml`; Testcontainers owns the cluster. `compose.yaml` is only for local
+IDE getting-started against a long-lived multi-host cluster.
 
 Under Agent-Up, Control uses `--no-launch-profile` and consumes `WEB_PORT` from `agent-up.json`. Add the same `COLDCEPH_*` variables there if that Control process should also target compose Ceph.

@@ -317,6 +317,11 @@ CI plans one version before those jobs: non-`main` runs use `0.0.0-ci.<run>`, wh
 both test jobs pass, semantic-release publishes the two versioned debs plus checksums, creates the
 `v<version>` tag and GitHub Release, and skips publishing when no release-worthy commit exists.
 
+Dependabot (`.github/dependabot.yml`) opens weekly version-update PRs for NuGet, npm release
+tooling, and GitHub Actions. Commits use `chore(deps)` so they do not cut a release. The Ceph
+daemon image is not Dependabot-managed: compose and E2E pin a tag that still ships ceph-container
+entrypoints, and `latest-reef` does not.
+
 `agent-up.json` launches local Control with injected `WEB_PORT`. Applications consume that
 variable; do not hard-code the development operator port when integrating with Agent-Up.
 
