@@ -5,9 +5,6 @@ on:
     branches:
       - '**'
 
-# Runs on main share one group and never cancel, so every commit that can release is built.
-# Everywhere else the newest push wins: a branch run that a later push has already superseded
-# only holds runners that the push it belongs to is waiting for.
 concurrency:
   group: >-
     ${{ github.ref == 'refs/heads/main'
@@ -54,9 +51,6 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      # Coverage is collected so a file with no tests at all is visible, not to chase a
-      # percentage. The providers that talk to Ceph, systemd, hdparm, RGW and the nodes had
-      # none, and nothing in CI said so.
       - name: Restore and test
         run: >-
           dotnet test coldceph.slnx --configuration Release
@@ -74,7 +68,16 @@ jobs:
         if: always()
         run: node .github/scripts/coverage-summary.js artifacts/test-results
 
-      # A failing or flaky run has to leave something behind to diagnose.
+      - name: Upload coverage to Codecov
+        if: always() && !cancelled()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: artifacts/test-results
+          flags: unit
+          fail_ci_if_error: true
+          handle_no_reports_found: true
+
       - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -104,13 +107,10 @@ jobs:
           --results-directory artifacts/e2e-results
           --blame-hang --blame-hang-timeout 10m
 
-      # Repeat the failure messages at the end of the log. They otherwise sit in the middle of a
-      # long log, which is awkward to page back into.
       - name: Summarise E2E failures
         if: failure()
         run: node .github/scripts/trx-failures.js artifacts/e2e-results
 
-      # An E2E failure is almost always about what the Ceph container was doing, so capture it.
       - name: Capture Ceph container state
         if: failure()
         run: |
