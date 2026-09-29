@@ -1,5 +1,7 @@
 # ColdCeph
 
+[![codecov](https://codecov.io/github/themassiveone/coldceph/graph/badge.svg?token=XCS869561Z)](https://codecov.io/github/themassiveone/coldceph)
+
 Cold-storage orchestration layer for Ceph. Keep the Ceph control plane available while HDD-backed
 OSDs stop and enter hardware standby. An S3 gateway wakes the storage plane before forwarding
 requests to RGW.
