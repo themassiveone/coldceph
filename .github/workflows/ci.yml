@@ -72,8 +72,8 @@ jobs:
         run: node .github/scripts/coverage-summary.js artifacts/test-results
 
       - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
         if: ${{ always() && !cancelled() && secrets.CODECOV_TOKEN != '' }}
-        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: artifacts/test-results
@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload unit test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-results
           path: artifacts/test-results
@@ -127,7 +127,7 @@ jobs:
 
       - name: Upload E2E results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-test-results
           path: artifacts/e2e-results
