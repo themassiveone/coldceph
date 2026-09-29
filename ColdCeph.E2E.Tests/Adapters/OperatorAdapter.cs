@@ -175,6 +175,158 @@ public sealed class OperatorAdapter : XceptoAdapter
         }));
     }
 
+    /// <summary>
+    /// Reads the live confirmation and asserts ColdCeph classified everything the cluster is
+    /// actually reporting as expected.
+    /// <para>
+    /// This is the step the harness used to make impossible. It muted the demo cluster's
+    /// warnings and refused to start unless health was clean — because, as its own throw said,
+    /// "Integrity would FAULT at READY". Classification is the most safety-critical logic in
+    /// ColdCeph and it had never met a single real health check.
+    /// </para>
+    /// </summary>
+    public void SeeLiveHealthIsClassifiedExpected()
+    {
+        AddStep(new ExpectationStepState("live Ceph health classifies as expected", async () =>
+        {
+            var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
+            var unexpected = UnexpectedChecks(snapshot);
+            if (unexpected.Count > 0)
+                throw new InvalidOperationException(
+                    "Ceph is reporting checks ColdCeph classifies as unexpected, which holds writes back: "
+                    + string.Join(", ", unexpected)
+                    + ". Either the condition is real, or the check belongs in IntegrityService's "
+                    + "cold-phase list and in Support/CephFixtures.");
+            return true;
+        }));
+    }
+
+    /// <summary>
+    /// A live cluster is not a durability failure. If this trips, an ordinary warning is being
+    /// read as data loss and the appliance would FAULT — which does not clear on its own.
+    /// </summary>
+    public void SeeLiveHealthIsNotADurabilityFailure()
+    {
+        AddStep(new ExpectationStepState("live Ceph health is not a durability failure", async () =>
+        {
+            var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
+            return snapshot.Contains("\"durabilityFailure\":false", StringComparison.OrdinalIgnoreCase)
+                   || snapshot.Contains("\"durabilityFailure\": false", StringComparison.OrdinalIgnoreCase);
+        }));
+    }
+
+    /// <summary>
+    /// After a sleep, StoragePlane holds a scoped noout and Ceph raises a flags check for it. This
+    /// is the invariant "controller-owned noout is expected, not a reason to FAULT" meeting the
+    /// string Ceph actually emits — which no test had ever done, because the unit fixtures were
+    /// written from imagination and the E2E cluster was gated on HEALTH_OK.
+    /// </summary>
+    public void SeeOwnedNooutIsClassifiedExpected()
+    {
+        AddStep(new ExpectationStepState("controller-owned noout classifies as expected", async () =>
+        {
+            var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
+
+            // Ceph raises the flags check on the next mgr tick, so its absence is a retry rather
+            // than a verdict. If it never appears the step times out naming itself, which says the
+            // scoped noout covered nothing.
+            var flags = snapshot.Contains("OSD_FLAGS", StringComparison.Ordinal)
+                        || snapshot.Contains("OSDMAP_FLAGS", StringComparison.Ordinal);
+            if (!flags)
+                return false;
+
+            var unexpected = UnexpectedChecks(snapshot);
+            if (unexpected.Count > 0)
+                throw new InvalidOperationException(
+                    "A noout this controller owns was classified unexpected: " + string.Join(", ", unexpected));
+            return true;
+        }));
+    }
+
+    /// <summary>
+    /// The Osds list overlays Ceph's <c>osd dump</c> onto node-pushed inventory. This asserts the
+    /// overlay actually carried Ceph's up/in through, rather than the page rendering whatever the
+    /// node last said.
+    /// <para>
+    /// Note what this does and does not prove. The E2E node uses an in-memory OSD runtime, because
+    /// the demo container has no supervisor to restart <c>ceph-osd</c> on request, so starting and
+    /// stopping an OSD here is simulated. The overlay, and therefore ColdCeph's reading of real
+    /// Ceph membership, is genuine; the process lifecycle is not. See
+    /// docs/design/test-representativeness-review.md.
+    /// </para>
+    /// </summary>
+    public void SeeOsdOverlayReportsCephMembership()
+    {
+        AddStep(new ExpectationStepState("Osds list carries Ceph's up/in through the overlay", async () =>
+        {
+            var response = await _client.GetAsync(new Uri(_baseUrl, "/v1/osds"));
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"/v1/osds failed: {(int)response.StatusCode}");
+            if (body.Contains("[]", StringComparison.Ordinal))
+                throw new InvalidOperationException("No OSD inventory reached Control from the node.");
+
+            // The demo cluster's osd.0 is up and in, and the overlay is the only thing that could
+            // put that on a row the node reported as down.
+            var up = body.Contains("\"up\":true", StringComparison.OrdinalIgnoreCase)
+                     || body.Contains("\"up\": true", StringComparison.OrdinalIgnoreCase);
+            var inCluster = body.Contains("\"in\":true", StringComparison.OrdinalIgnoreCase)
+                            || body.Contains("\"in\": true", StringComparison.OrdinalIgnoreCase);
+            return up && inCluster;
+        }));
+    }
+
+    /// <summary>
+    /// Asserts the live confirmation actually admits reads and writes, and says which predicate
+    /// refused if not.
+    /// <para>
+    /// S3 answers 503 for every reason there is — not READY, not read-ready, not write-ready — so a
+    /// refused GET or PUT on its own tells you nothing. This turns that into the predicate and the
+    /// checks behind it.
+    /// </para>
+    /// </summary>
+    public void SeeConfirmationAdmitsReads() => AddAdmissionStep("reads", "readReady");
+
+    /// <summary>
+    /// Write admission is a stricter gate than read admission — spec §27.4 requires PGs
+    /// <c>active+clean</c> and no degraded objects — so a read-only journey must not be held to it.
+    /// </summary>
+    public void SeeConfirmationAdmitsWrites() => AddAdmissionStep("writes", "writeReady");
+
+    private void AddAdmissionStep(string what, string predicate)
+    {
+        AddStep(new ExpectationStepState($"the live confirmation admits {what}", async () =>
+        {
+            var snapshot = await ConfirmIntegrityAsync();
+            if (snapshot is null)
+                return false;
+            if (Flag(snapshot, predicate) == true)
+                return true;
+
+            throw new InvalidOperationException(
+                $"The cluster is READY but the confirmation does not admit {what} "
+                + $"({predicate} is false), so S3 answers 503. "
+                + $"Unexpected checks: {Describe(UnexpectedChecks(snapshot))}. "
+                + $"Predicates and checks: {snapshot}");
+        }));
+    }
+
+    private static string Describe(IReadOnlyList<string> names)
+        => names.Count == 0 ? "(none)" : string.Join(", ", names);
+
+    /// <summary>Reads a boolean out of the integrity document, or null when it is not there.</summary>
+    private static bool? Flag(string json, string name)
+    {
+        var match = Regex.Match(json, $"\"{name}\"\\s*:\\s*(?<value>true|false)");
+        return match.Success ? match.Groups["value"].Value == "true" : null;
+    }
+
     public void Wake()
     {
         AddStep(new ActionStepState("wake storage plane", async () =>
@@ -217,6 +369,43 @@ public sealed class OperatorAdapter : XceptoAdapter
         if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.Redirect or HttpStatusCode.Found))
             throw new InvalidOperationException($"Login failed: {(int)response.StatusCode}");
     }
+
+    /// <summary>
+    /// Refreshes protection through the operator POST, then reads the classified document from
+    /// <c>/v1</c>. That is the same confirmation the operator triggers, so what is asserted is what
+    /// the appliance concluded, not a separate reading taken beside it.
+    /// </summary>
+    /// <summary>
+    /// Returns null when the confirmation has not landed yet — an unreachable monitor on the first
+    /// tick is a retry, not a verdict. Only a classification ColdCeph got wrong throws, so a
+    /// transient does not abort the journey before Xcepto can retry it.
+    /// </summary>
+    private async Task<string?> ConfirmIntegrityAsync()
+    {
+        await PostFormAsync("/integrity/check", await GetAntiforgeryHtmlAsync());
+        var response = await _client.GetAsync(new Uri(_baseUrl, "/v1/cluster/integrity"));
+        var body = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"/v1/cluster/integrity failed: {(int)response.StatusCode}");
+        return body.Contains("\"status\":\"UNAVAILABLE\"", StringComparison.Ordinal) ? null : body;
+    }
+
+    /// <summary>
+    /// Names the checks classified unexpected, so a failure says which condition ColdCeph did not
+    /// recognise rather than just that something was wrong.
+    /// </summary>
+    private static List<string> UnexpectedChecks(string integrityJson)
+        => Regex
+            .Matches(
+                integrityJson,
+                "\\{\\s*\"name\"\\s*:\\s*\"(?<name>[^\"]+)\"(?<body>.*?)\\}",
+                RegexOptions.Singleline)
+            .Where(match => match.Groups["body"].Value.Contains("\"unexpected\"", StringComparison.OrdinalIgnoreCase)
+                            || match.Groups["body"].Value.Contains("\"classification\":1", StringComparison.Ordinal)
+                            || match.Groups["body"].Value.Contains("\"classification\": 1", StringComparison.Ordinal))
+            .Select(match => match.Groups["name"].Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
     private async Task<string?> GetPlaneStateAsync()
     {

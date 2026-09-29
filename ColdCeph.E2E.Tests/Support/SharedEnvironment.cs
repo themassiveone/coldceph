@@ -21,6 +21,7 @@ public sealed class SharedEnvironment
     public const string OperatorPassword = "changeme";
     public const string NodeToken = "changeme";
     public const string HostId = "dev";
+    public const string DemoBucket = "cold";
     public const int OperatorPort = 18080;
     public const int S3Port = 17480;
     public const int NodePort = 17080;
@@ -34,12 +35,14 @@ public sealed class SharedEnvironment
     public static Uri RgwAddress { get; private set; } = new("http://127.0.0.1");
     public static string RepositoryRoot { get; private set; } = "";
     public static string CephContainer { get; private set; } = "";
+    public static string NooutScope { get; private set; } = "hdd-osds";
 
     public static async Task StartAsync(CephCluster ceph)
     {
         RepositoryRoot = FindRepositoryRoot();
         CephContainer = ceph.ContainerId;
         RgwAddress = ceph.RgwAddress;
+        NooutScope = ceph.NooutScope;
         _node = await StartNodeAsync();
         _control = await StartControlAsync();
         await WaitUntilListeningAsync(NodeAddress, "/health");
@@ -124,6 +127,7 @@ public sealed class SharedEnvironment
             ConfiguredNodeEndpoints = [NodeAddress],
             ConfiguredNodeHostId = HostId,
             S3Mode = S3AdmissionMode.Retry,
+            NooutScope = NooutScope,
             IdleTimeout = TimeSpan.FromHours(1),
             BindHttpListeners = true
         };

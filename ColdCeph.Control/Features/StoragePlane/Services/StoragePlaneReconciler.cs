@@ -2,28 +2,30 @@ using ColdCeph.Control.Features.Devices.Controllers;
 using ColdCeph.Control.Features.Integrity.Controllers;
 using ColdCeph.Control.Features.Osds.Controllers;
 using ColdCeph.Control.Features.S3.Controllers;
-using ColdCeph.Control.Features.StoragePlane.Services;
+using ColdCeph.Control.Shared;
 using ColdCeph.Core.Features.Integrity.DTOs;
 using ColdCeph.Core.Features.Operations.DTOs;
 using ColdCeph.Core.Features.StoragePlane.DTOs;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace ColdCeph.Control.Features.StoragePlane.Services;
 
-public sealed class StoragePlaneReconciler : BackgroundService
+public sealed class StoragePlaneReconciler : ReconcilerLoop
 {
     private readonly StoragePlaneService _plane;
     private readonly S3Controller _s3;
     private readonly IntegrityController _integrity;
     private readonly OsdsController _osds;
-    private readonly Devices.Controllers.DevicesController _devices;
+    private readonly DevicesController _devices;
 
     public StoragePlaneReconciler(
         StoragePlaneService plane,
         S3Controller s3,
         IntegrityController integrity,
         OsdsController osds,
-        DevicesController devices)
+        DevicesController devices,
+        ILogger<StoragePlaneReconciler> logger)
+        : base(logger)
     {
         _plane = plane;
         _s3 = s3;
@@ -32,67 +34,48 @@ public sealed class StoragePlaneReconciler : BackgroundService
         _devices = devices;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override void ReconcileBody()
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            ReconcileOnce();
-            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
-        }
-    }
-
-    public void ReconcileOnce()
-    {
-        try
-        {
-            ReconcileBody();
-        }
-        catch (Exception)
-        {
-            // A failed node query or illegal transition must not stop the hosted loop.
-        }
-    }
-
-    private void ReconcileBody()
-    {
-        var snapshot = _plane.GetState();
         var integrity = _integrity.GetLastIntegrity();
         var pending = _s3.GetPendingWork();
-        var operationId = snapshot.ActiveOperationId ?? OperationIdRules.Create().Value;
 
-        if (IntegrityDurability.HasFailure(integrity) && snapshot.State != StoragePlaneState.Faulted)
+        if (IntegrityDurability.HasFailure(integrity) && State() != StoragePlaneState.Faulted)
         {
             _plane.EnterFaulted("unexpected-integrity");
             return;
         }
 
-        if (!snapshot.Trusted)
-        {
+        if (!_plane.GetState().Trusted)
             _plane.MarkObserved(InferReality(), "startup-reconcile");
-            snapshot = _plane.GetState();
-        }
 
-        if (pending.HasPendingWork && snapshot.State == StoragePlaneState.Cold)
-            _plane.RequestWake(operationId, "s3-pending");
+        // Each guard reads the state as it is now. Deciding several transitions from one
+        // stale snapshot made the sequence depend on which tick a change landed in.
+        if (pending.HasPendingWork && State() == StoragePlaneState.Cold)
+            _plane.RequestWake(OperationId(), "s3-pending");
 
-        if (snapshot.State == StoragePlaneState.Waking && _osds.IsEveryProcessRunning())
-            _plane.EnterReady(operationId);
+        if (State() == StoragePlaneState.Waking && _osds.IsEveryProcessRunning())
+            _plane.EnterReady(OperationId());
 
-        if (snapshot.State == StoragePlaneState.Ready
+        if (State() == StoragePlaneState.Ready
             && !pending.HasPendingWork
             && pending.ActiveCount == 0
             && integrity.Predicates.SleepSafe
             && _plane.IsIdle(pending.LastActivity))
-            _plane.RequestSleep(operationId, "idle-policy");
+            _plane.RequestSleep(OperationId(), "idle-policy");
 
-        if (snapshot.State == StoragePlaneState.Quiescing && pending.ActiveCount == 0 && !pending.HasPendingWork)
-            _plane.EnterSleeping(operationId);
+        if (State() == StoragePlaneState.Quiescing && pending.ActiveCount == 0 && !pending.HasPendingWork)
+            _plane.EnterSleeping(OperationId());
 
-        if (snapshot.State == StoragePlaneState.Sleeping
+        if (State() == StoragePlaneState.Sleeping
             && _osds.IsEveryProcessStopped()
             && _devices.IsEveryDeviceStandby())
-            _plane.EnterCold(operationId);
+            _plane.EnterCold(OperationId());
     }
+
+    private StoragePlaneState State() => _plane.GetState().State;
+
+    private string OperationId()
+        => _plane.GetState().ActiveOperationId ?? OperationIdRules.Create().Value;
 
     private StoragePlaneState InferReality()
     {

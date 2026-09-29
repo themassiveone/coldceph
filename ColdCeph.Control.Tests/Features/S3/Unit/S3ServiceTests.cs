@@ -29,7 +29,7 @@ public sealed class S3ServiceTests
         Assert.That(context.Response.Headers.RetryAfter.ToString(), Is.EqualTo("30"));
         Assert.That(proxy.Calls, Is.EqualTo(0));
         Assert.That(plane.GetState().State, Is.EqualTo(ColdCeph.Core.Features.StoragePlane.DTOs.StoragePlaneState.Cold));
-        Assert.That(_ceph!.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(_ceph!.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -44,7 +44,7 @@ public sealed class S3ServiceTests
         s3.HandleAsync(context).GetAwaiter().GetResult();
 
         Assert.That(proxy.Calls, Is.EqualTo(0));
-        Assert.That(_ceph!.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(_ceph!.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -55,8 +55,7 @@ public sealed class S3ServiceTests
         plane.RequestWake(operationId, "operator");
         plane.EnterReady(operationId);
         var ceph = _ceph!;
-        ceph.PgsClean = false;
-        ceph.HasRecoveryOrBackfill = true;
+        ceph.Seeing(Support.CephFixture.Recovering);
         var context = new DefaultHttpContext();
         context.Request.Method = "PUT";
         context.Response.Body = new MemoryStream();
@@ -65,7 +64,7 @@ public sealed class S3ServiceTests
 
         Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status503ServiceUnavailable));
         Assert.That(proxy.Calls, Is.EqualTo(0));
-        Assert.That(_ceph!.HealthDetailCalls, Is.EqualTo(1));
+        Assert.That(_ceph!.ObservationCalls, Is.EqualTo(1));
     }
 
     [Test]
@@ -83,7 +82,7 @@ public sealed class S3ServiceTests
 
         Assert.That(proxy.Calls, Is.EqualTo(1));
         Assert.That(context.Response.StatusCode, Is.EqualTo(200));
-        Assert.That(_ceph!.HealthDetailCalls, Is.EqualTo(1));
+        Assert.That(_ceph!.ObservationCalls, Is.EqualTo(1));
     }
 
     [Test]
@@ -98,14 +97,14 @@ public sealed class S3ServiceTests
         context.Response.Body = new MemoryStream();
 
         s3.HandleAsync(context).GetAwaiter().GetResult();
-        var calls = _ceph!.HealthDetailCalls;
+        var calls = _ceph!.ObservationCalls;
         context = new DefaultHttpContext();
         context.Request.Method = "GET";
         context.Response.Body = new MemoryStream();
         s3.HandleAsync(context).GetAwaiter().GetResult();
 
         Assert.That(calls, Is.EqualTo(1));
-        Assert.That(_ceph.HealthDetailCalls, Is.EqualTo(2));
+        Assert.That(_ceph.ObservationCalls, Is.EqualTo(2));
     }
 
     private FakeCephQueryProvider? _ceph;

@@ -204,7 +204,10 @@ public sealed class StoragePlaneService
 
     private void ApplyOwnedNoout(StoragePlaneRecord record, string operationId)
     {
-        const string scope = "hdd-osds";
+        // The scope has to name a CRUSH bucket that exists in this cluster. Hard-coding one meant
+        // sleep broke on any deployment that did not happen to use that name: the set-group call
+        // fails and the transition cannot record what it owns.
+        var scope = _config.NooutScope;
         if (record.OwnedNoout.Any(item => item.Scope == scope))
             return;
 

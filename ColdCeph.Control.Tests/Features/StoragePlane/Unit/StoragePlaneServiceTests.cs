@@ -71,8 +71,8 @@ public sealed class StoragePlaneServiceTests
         plane.RequestSleep(operationId, "operator");
         plane.EnterSleeping(operationId);
 
-        Assert.That(noout.Commands, Is.EqualTo(new[] { "osd set-group noout hdd-osds" }));
-        Assert.That(repo.Load().OwnedNoout.Select(item => item.Scope), Does.Contain("hdd-osds"));
+        Assert.That(noout.Commands, Is.EqualTo(new[] { "osd set-group noout default" }));
+        Assert.That(repo.Load().OwnedNoout.Select(item => item.Scope), Does.Contain("default"));
         Assert.That(noout.Commands.Any(command => command.Contains(" out") || command.Contains("destroy") || command.Contains("purge")), Is.False);
     }
 
@@ -89,7 +89,7 @@ public sealed class StoragePlaneServiceTests
         plane.RequestWake(operationId, "operator");
         plane.EnterReady(operationId);
 
-        Assert.That(noout.Commands, Does.Contain("osd unset-group noout hdd-osds"));
+        Assert.That(noout.Commands, Does.Contain("osd unset-group noout default"));
         Assert.That(repo.Load().OwnedNoout, Is.Empty);
     }
 
@@ -148,10 +148,53 @@ public sealed class StoragePlaneServiceTests
         Assert.That(plane.GetState().State, Is.EqualTo(StoragePlaneState.Faulted));
     }
 
-    private static StoragePlaneService Create(out MemoryStoragePlaneRepository repo, out RecordingNooutProvider noout)
+    /// <summary>
+    /// The scope names a CRUSH bucket that has to exist in the operator's cluster. It used to be
+    /// hard-coded, so on any deployment not using that name the set-group call fails and sleep
+    /// cannot record what it owns.
+    /// </summary>
+    [Test]
+    public void EnterSleeping_scopes_noout_to_the_configured_crush_bucket()
+    {
+        var plane = Create(out var repo, out var noout, scope: "cold-rack-1");
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+        plane.RequestSleep(operationId, "operator");
+        plane.EnterSleeping(operationId);
+
+        Assert.That(noout.Commands, Is.EqualTo(new[] { "osd set-group noout cold-rack-1" }));
+        Assert.That(repo.Load().OwnedNoout.Select(item => item.Scope), Does.Contain("cold-rack-1"));
+        Assert.That(noout.Commands, Has.None.Contains("default"), "the configured scope must replace the default, not add to it");
+    }
+
+    [Test]
+    public void EnterReady_clears_the_configured_scope()
+    {
+        var plane = Create(out var repo, out var noout, scope: "cold-rack-1");
+        var operationId = OperationIdRules.Create().Value;
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+        plane.RequestSleep(operationId, "operator");
+        plane.EnterSleeping(operationId);
+        plane.EnterCold(operationId);
+        plane.RequestWake(operationId, "operator");
+        plane.EnterReady(operationId);
+
+        Assert.That(noout.Commands, Does.Contain("osd unset-group noout cold-rack-1"));
+        Assert.That(repo.Load().OwnedNoout, Is.Empty);
+    }
+
+    private static StoragePlaneService Create(
+        out MemoryStoragePlaneRepository repo,
+        out RecordingNooutProvider noout,
+        string? scope = null)
     {
         repo = new MemoryStoragePlaneRepository();
         noout = new RecordingNooutProvider();
-        return new StoragePlaneService(repo, noout, new FakeClock(), new ControlConfig { BindHttpListeners = false });
+        var config = scope is null
+            ? new ControlConfig { BindHttpListeners = false }
+            : new ControlConfig { BindHttpListeners = false, NooutScope = scope };
+        return new StoragePlaneService(repo, noout, new FakeClock(), config);
     }
 }

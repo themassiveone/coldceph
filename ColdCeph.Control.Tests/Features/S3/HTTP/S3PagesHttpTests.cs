@@ -28,7 +28,7 @@ public sealed class S3PagesHttpTests
         Assert.That(html, Does.Contain("is-disabled"));
         Assert.That(html, Does.Not.Contain("Wake storage"));
         Assert.That(html, Does.Not.Contain(">cold<"));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -46,7 +46,7 @@ public sealed class S3PagesHttpTests
         Assert.That(html, Does.Contain("Wake storage"));
         Assert.That(html, Does.Contain("is-disabled"));
         Assert.That(html, Does.Not.Contain("href=\"/s3/cold\""));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -64,7 +64,7 @@ public sealed class S3PagesHttpTests
         Assert.That(html, Does.Contain("href=\"/s3/cold\""));
         Assert.That(html, Does.Not.Contain("is-disabled"));
         Assert.That(html, Does.Not.Contain("action=\"/wake\""));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]

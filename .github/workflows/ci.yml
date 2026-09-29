@@ -54,8 +54,35 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # Coverage is collected so a file with no tests at all is visible, not to chase a
+      # percentage. The providers that talk to Ceph, systemd, hdparm, RGW and the nodes had
+      # none, and nothing in CI said so.
       - name: Restore and test
-        run: dotnet test coldceph.slnx --configuration Release --filter "FullyQualifiedName!~ColdCeph.E2E.Tests"
+        run: >-
+          dotnet test coldceph.slnx --configuration Release
+          --filter "FullyQualifiedName!~ColdCeph.E2E.Tests"
+          --logger trx
+          --results-directory artifacts/test-results
+          --collect "XPlat Code Coverage"
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+
+      - name: Summarise unit failures
+        if: failure()
+        run: node .github/scripts/trx-failures.js artifacts/test-results
+
+      - name: Coverage summary
+        if: always()
+        run: node .github/scripts/coverage-summary.js artifacts/test-results
+
+      # A failing or flaky run has to leave something behind to diagnose.
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 14
 
   e2e:
     name: E2E tests
@@ -70,7 +97,39 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Run Xcepto journeys
-        run: dotnet test coldceph.slnx --configuration Release --filter "FullyQualifiedName~ColdCeph.E2E.Tests"
+        run: >-
+          dotnet test coldceph.slnx --configuration Release
+          --filter "FullyQualifiedName~ColdCeph.E2E.Tests"
+          --logger trx
+          --results-directory artifacts/e2e-results
+          --blame-hang --blame-hang-timeout 10m
+
+      # Repeat the failure messages at the end of the log. They otherwise sit in the middle of a
+      # long log, which is awkward to page back into.
+      - name: Summarise E2E failures
+        if: failure()
+        run: node .github/scripts/trx-failures.js artifacts/e2e-results
+
+      # An E2E failure is almost always about what the Ceph container was doing, so capture it.
+      - name: Capture Ceph container state
+        if: failure()
+        run: |
+          mkdir -p artifacts/e2e-results/ceph
+          for id in $(docker ps -aq); do
+            name=$(docker inspect --format '{{.Name}}' "$id" | tr -d '/')
+            docker logs "$id" > "artifacts/e2e-results/ceph/$name.log" 2>&1 || true
+            docker inspect "$id" > "artifacts/e2e-results/ceph/$name.inspect.json" 2>&1 || true
+          done
+          docker ps -a > artifacts/e2e-results/ceph/docker-ps.txt 2>&1 || true
+
+      - name: Upload E2E results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: artifacts/e2e-results
+          if-no-files-found: warn
+          retention-days: 14
 
   release:
     name: Release

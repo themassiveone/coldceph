@@ -12,7 +12,7 @@ public sealed class CephClusterTests
     public async Task Control_ceph_cli_runs_against_the_cluster()
     {
         var scenario = new ColdCephScenario();
-        await XceptoTest.Given(scenario, SharedTimeout.Timeout, builder =>
+        await XceptoTest.Given(scenario, SharedTimeout.LongTimeout, builder =>
         {
             var ceph = builder.CephAdapterBuilder()
                 .WithContainer(scenario.CephContainer)
@@ -20,7 +20,8 @@ public sealed class CephClusterTests
 
             ceph.SeeQuorum();
             ceph.SeeHealthNotSilent();
-            ceph.SeePgStat();
+            ceph.SeePgStatesParsed();
+            ceph.SeeConfirmationShapeMatchesFixtures();
             ceph.SeeOsdMembership();
             ceph.SeeScopedNooutRoundTrip();
         });

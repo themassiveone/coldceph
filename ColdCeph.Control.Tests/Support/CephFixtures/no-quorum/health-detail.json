@@ -1,0 +1,1 @@
+{"status":"HEALTH_WARN","checks":{"MON_DOWN":{"severity":"HEALTH_WARN","summary":{"message":"1/3 mons down, quorum b,c","count":1},"detail":[],"muted":false}},"mutes":[]}

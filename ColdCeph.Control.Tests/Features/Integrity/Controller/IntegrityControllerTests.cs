@@ -17,7 +17,7 @@ public sealed class IntegrityControllerTests
 
         _ = controller.GetPredicates();
 
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]
@@ -27,8 +27,8 @@ public sealed class IntegrityControllerTests
 
         _ = controller.GetIntegrity();
 
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(1));
-        Assert.That(ceph.HealthDetailCalls, Is.Not.EqualTo(0));
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(1));
+        Assert.That(ceph.ObservationCalls, Is.Not.EqualTo(0));
     }
 
     private static (IntegrityController Controller, FakeCephQueryProvider Ceph) Create()

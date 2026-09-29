@@ -19,6 +19,7 @@ public sealed class S3AdmissionTests
                 .Build();
             var s3 = builder.S3AdapterBuilder()
                 .WithBaseUrl(scenario.S3Address)
+                .WithBucket(scenario.DemoBucket)
                 .Build();
 
             op.EnsureCold(scenario.OperatorPassword);
@@ -27,22 +28,53 @@ public sealed class S3AdmissionTests
         });
     }
 
+    /// <summary>
+    /// A missing object answering 404 proves the request reached RGW and was accepted, which
+    /// "not 503" did not.
+    /// </summary>
     [Test]
-    public async Task Get_after_wake_is_forwarded_to_rgw()
+    public async Task Get_after_wake_reaches_rgw()
     {
         var scenario = new ColdCephScenario();
-        await XceptoTest.Given(scenario, SharedTimeout.Timeout, builder =>
+        await XceptoTest.Given(scenario, SharedTimeout.LongTimeout, builder =>
         {
             var op = builder.OperatorAdapterBuilder()
                 .WithBaseUrl(scenario.ControlAddress)
                 .Build();
             var s3 = builder.S3AdapterBuilder()
                 .WithBaseUrl(scenario.S3Address)
+                .WithBucket(scenario.DemoBucket)
                 .Build();
 
             op.EnsureReady(scenario.OperatorPassword);
             op.SeeStoragePlane("Ready");
-            s3.SeeForwarded();
+            op.SeeConfirmationAdmitsReads();
+            s3.SeeMissingObjectIsNotFound();
+        });
+    }
+
+    /// <summary>
+    /// The journey nothing in the repository used to make: an object written through the cold
+    /// endpoint and read back. A dropped signed header shows up here as RGW's 403.
+    /// </summary>
+    [Test]
+    public async Task An_object_round_trips_through_the_cold_endpoint()
+    {
+        var scenario = new ColdCephScenario();
+        await XceptoTest.Given(scenario, SharedTimeout.LongTimeout, builder =>
+        {
+            var op = builder.OperatorAdapterBuilder()
+                .WithBaseUrl(scenario.ControlAddress)
+                .Build();
+            var s3 = builder.S3AdapterBuilder()
+                .WithBaseUrl(scenario.S3Address)
+                .WithBucket(scenario.DemoBucket)
+                .Build();
+
+            op.EnsureReady(scenario.OperatorPassword);
+            op.SeeConfirmationAdmitsWrites();
+            s3.SeeObjectRoundTrip();
+            s3.SeeBucketListing();
         });
     }
 }

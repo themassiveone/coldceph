@@ -20,6 +20,7 @@ public sealed class OperatorInventoryTests
 
             op.SeeOsds(scenario.OperatorPassword);
             op.SeeDevices(scenario.OperatorPassword);
+            op.SeeOsdOverlayReportsCephMembership();
         });
     }
 }

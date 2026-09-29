@@ -48,7 +48,7 @@ public sealed class OsdsControllerTests
 
         Assert.That(osds.IsEveryProcessRunning(), Is.True);
         Assert.That(ceph.MembershipCalls, Is.EqualTo(0));
-        Assert.That(ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]

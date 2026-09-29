@@ -11,6 +11,23 @@ public sealed class ControlConfig
     public string OperatorPassword { get; init; } = "changeme";
     public string NodeToken { get; init; } = "changeme";
     public string ControllerIdentity { get; init; } = "coldceph-control";
+
+    /// <summary>
+    /// The CRUSH bucket StoragePlane scopes its <c>noout</c> to while the plane sleeps.
+    /// <para>
+    /// It must name a bucket that exists in this cluster and covers the cold OSDs:
+    /// <c>osd set-group noout</c> fails on an unknown name, and a failed set leaves sleep unable to
+    /// record what it owns. The default is the <c>default</c> CRUSH root, which every Ceph cluster
+    /// has. It was previously hard-coded to <c>hdd-osds</c>, a bucket nothing in this repository
+    /// creates — so sleep failed on the local compose stack and on any cluster that had not been
+    /// set up with that exact name by hand.
+    /// </para>
+    /// <para>
+    /// Narrow it with <c>COLDCEPH_NOOUT_SCOPE</c> on an appliance whose root also holds OSDs that
+    /// are not part of the cold plane.
+    /// </para>
+    /// </summary>
+    public string NooutScope { get; init; } = "default";
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromMinutes(15);
     public S3AdmissionMode S3Mode { get; init; } = S3AdmissionMode.Wait;
     public int RetryAfterSeconds { get; init; } = 30;
@@ -22,7 +39,21 @@ public sealed class ControlConfig
     public string ConfiguredNodeHostId { get; init; } = "dev";
     public TimeSpan HeartbeatStaleAfter { get; init; } = TimeSpan.FromSeconds(45);
     public bool BindHttpListeners { get; init; } = true;
-    public TimeSpan CephQueryCacheTtl { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Whether the three reconcile loops run. Separate from <see cref="BindHttpListeners"/> so a
+    /// test can bind both real listeners — which is the only way to exercise port-based S3
+    /// dispatch — without a background loop moving the plane underneath it.
+    /// </summary>
+    public bool RunReconcilers { get; init; } = true;
+    /// <summary>
+    /// How long a single ceph invocation may run before it is killed. Without a bound, one
+    /// hung call blocks every other Ceph query in the process, because they are serialised.
+    /// </summary>
+    public TimeSpan CephCommandTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long to wait for a node to answer a start/stop/wake/standby command.</summary>
+    public TimeSpan NodeCommandTimeout { get; init; } = TimeSpan.FromSeconds(15);
     public string S3AccessKey { get; init; } = "coldceph";
     public string S3SecretKey { get; init; } = "coldcephsecret";
     public string S3Region { get; init; } = "us-east-1";
@@ -88,7 +119,9 @@ public sealed class ControlConfig
             CephKeyring = Optional("COLDCEPH_CEPH_KEYRING"),
             ConfiguredNodeEndpoints = ParseEndpoints(Optional("COLDCEPH_NODE_ENDPOINT")),
             ConfiguredNodeHostId = hostId,
+            NooutScope = Optional("COLDCEPH_NOOUT_SCOPE") ?? "default",
             BindHttpListeners = Environment.GetEnvironmentVariable("COLDCEPH_BIND") != "0",
+            RunReconcilers = Environment.GetEnvironmentVariable("COLDCEPH_BIND") != "0",
             S3AccessKey = Optional("COLDCEPH_S3_ACCESS_KEY") ?? "coldceph",
             S3SecretKey = Optional("COLDCEPH_S3_SECRET_KEY") ?? "coldcephsecret",
             S3Region = Optional("COLDCEPH_S3_REGION") ?? "us-east-1"

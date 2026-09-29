@@ -14,7 +14,7 @@ public sealed class AuthPagesHttpTests
         Assert.That(html, Does.Contain("Operator login"));
         Assert.That(html, Does.Not.Contain("http-equiv=\"refresh\""));
         Assert.That(html, Does.Not.Contain("Operational"));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
     }
 
     [Test]

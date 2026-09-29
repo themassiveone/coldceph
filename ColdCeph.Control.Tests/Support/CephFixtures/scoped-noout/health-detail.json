@@ -1,0 +1,1 @@
+{"status":"HEALTH_WARN","checks":{"OSD_FLAGS":{"severity":"HEALTH_WARN","summary":{"message":"3 OSDs or CRUSH {nodes, device-classes} have {NOOUT} flags set","count":3},"detail":[{"message":"crush_node hdd-osds has flags noout"}],"muted":false}},"mutes":[]}

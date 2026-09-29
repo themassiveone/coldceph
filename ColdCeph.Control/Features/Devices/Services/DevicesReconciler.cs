@@ -1,14 +1,14 @@
-using ColdCeph.Control.Features.Devices.Services;
 using ColdCeph.Control.Features.Hosts.Controllers;
 using ColdCeph.Control.Features.Osds.Controllers;
 using ColdCeph.Control.Features.StoragePlane.Controllers;
+using ColdCeph.Control.Shared;
 using ColdCeph.Core.Features.Operations.DTOs;
 using ColdCeph.Core.Features.StoragePlane.DTOs;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace ColdCeph.Control.Features.Devices.Services;
 
-public sealed class DevicesReconciler : BackgroundService
+public sealed class DevicesReconciler : ReconcilerLoop
 {
     private readonly DevicesService _devices;
     private readonly StoragePlaneController _plane;
@@ -19,7 +19,9 @@ public sealed class DevicesReconciler : BackgroundService
         DevicesService devices,
         StoragePlaneController plane,
         OsdsController osds,
-        HostsController hosts)
+        HostsController hosts,
+        ILogger<DevicesReconciler> logger)
+        : base(logger)
     {
         _devices = devices;
         _plane = plane;
@@ -27,43 +29,32 @@ public sealed class DevicesReconciler : BackgroundService
         _hosts = hosts;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override void ReconcileBody()
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            ReconcileOnce();
-            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
-        }
-    }
+        var snapshot = _plane.GetState();
+        var state = snapshot.State;
+        if (state is not (StoragePlaneState.Waking or StoragePlaneState.Sleeping))
+            return;
 
-    public void ReconcileOnce()
-    {
-        try
-        {
-            ReconcileBody();
-        }
-        catch (Exception)
-        {
-            // A failed node call must not stop the hosted loop.
-        }
-    }
+        var operationId = snapshot.ActiveOperationId ?? OperationIdRules.Create().Value;
 
-    private void ReconcileBody()
-    {
-        var state = _plane.GetState().State;
-        var operationId = _plane.GetState().ActiveOperationId ?? OperationIdRules.Create().Value;
+        // A disk never spins down while its OSD is still running.
+        if (state == StoragePlaneState.Sleeping && !_osds.IsEveryProcessStopped())
+            return;
+
         foreach (var host in _hosts.ListHosts())
         {
             try
             {
                 if (state == StoragePlaneState.Waking)
-                    _devices.WakeAll(host.HostId, host.Endpoint, operationId);
-                if (state == StoragePlaneState.Sleeping && _osds.IsEveryProcessStopped())
-                    _devices.StandbyAll(host.HostId, host.Endpoint, operationId);
+                    _devices.WakeDrifted(host.HostId, host.Endpoint, operationId);
+                else
+                    _devices.StandbyDrifted(host.HostId, host.Endpoint, operationId);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                // One down node must not skip the others.
+                // One down node must not skip the others, but it must still be visible.
+                Record($"{nameof(DevicesReconciler)} could not reach host {host.HostId}", exception);
             }
         }
     }

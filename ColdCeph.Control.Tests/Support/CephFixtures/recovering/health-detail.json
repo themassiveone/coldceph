@@ -1,0 +1,1 @@
+{"status":"HEALTH_WARN","checks":{"PG_DEGRADED":{"severity":"HEALTH_WARN","summary":{"message":"Degraded data redundancy: 7/36 objects degraded (19.444%), 5 pgs degraded","count":5},"detail":[],"muted":false}},"mutes":[]}

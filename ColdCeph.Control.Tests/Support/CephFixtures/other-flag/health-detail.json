@@ -1,0 +1,1 @@
+{"status":"HEALTH_WARN","checks":{"OSDMAP_FLAGS":{"severity":"HEALTH_WARN","summary":{"message":"noup,noout flag(s) set","count":2},"detail":[],"muted":false}},"mutes":[]}

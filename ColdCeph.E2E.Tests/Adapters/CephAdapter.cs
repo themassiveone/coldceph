@@ -2,6 +2,7 @@ using ColdCeph.Control.Composition;
 using ColdCeph.Control.Features.Integrity.Providers;
 using ColdCeph.Control.Features.StoragePlane.Providers;
 using ColdCeph.Control.Shared;
+using ColdCeph.Core.Features.Integrity.DTOs;
 using ColdCeph.E2E.Tests.States;
 using ColdCeph.E2E.Tests.Support;
 using Xcepto.Adapters;
@@ -12,6 +13,7 @@ public sealed class CephAdapter : XceptoAdapter
 {
     private readonly CephCliQueryProvider _query;
     private readonly CephNooutProvider _noout;
+    private CephObservation? _observation;
 
     internal CephAdapter(ControlConfig config)
     {
@@ -20,17 +22,25 @@ public sealed class CephAdapter : XceptoAdapter
         _noout = new CephNooutProvider(config, runner);
     }
 
+    /// <summary>
+    /// One confirmation for the whole journey, which is also the semantics under test: a
+    /// confirmation is one pass over the monitor. Taking a fresh one per step meant four
+    /// <c>docker exec … ceph</c> invocations each, and the journey outran its budget before it
+    /// could assert anything.
+    /// </summary>
+    private CephObservation Observation => _observation ??= _query.GetObservation();
+
     public void SeeQuorum()
     {
-        AddStep(new ExpectationStepState("Control ceph quorum_status succeeds", () =>
-            Task.FromResult(_query.GetQuorumAvailable())));
+        AddStep(new ExpectationStepState("Control reads a named Ceph quorum", () =>
+            Task.FromResult(Observation.QuorumAvailable)));
     }
 
     public void SeeHealthNotSilent()
     {
         AddStep(new ExpectationStepState("Control ceph health detail reports HEALTH_*", () =>
         {
-            var health = _query.GetHealthDetail();
+            var health = Observation.Health;
             return Task.FromResult(
                 health.Status.StartsWith("HEALTH_", StringComparison.Ordinal)
                 && !string.Equals(health.Status, "UNAVAILABLE", StringComparison.Ordinal));
@@ -43,12 +53,61 @@ public sealed class CephAdapter : XceptoAdapter
             Task.FromResult(_query.ListOsdMembership().Count > 0)));
     }
 
-    public void SeePgStat()
+    /// <summary>
+    /// The live cluster reports PGs, and every group parses into recognisable state tokens.
+    /// An unparsed <c>pgs_by_state</c> would leave every PG predicate false and hold the
+    /// plane closed, so this asserts the parse produced something rather than that it ran.
+    /// </summary>
+    public void SeePgStatesParsed()
     {
-        AddStep(new ExpectationStepState("Control ceph pg stat succeeds", () =>
+        AddStep(new ExpectationStepState("Control parses Ceph PG states", () =>
         {
-            _ = _query.GetPgsClean();
-            return Task.FromResult(true);
+            var states = Observation.PgStates;
+            return Task.FromResult(
+                states.Count > 0
+                && states.All(state => state.Count > 0 && state.Tokens.Any()));
+        }));
+    }
+
+    /// <summary>
+    /// Everything ColdCeph decides from comes back in a recognisable shape. This is what keeps
+    /// the committed fixture corpus honest: if Ceph's schema moves, this fails here rather
+    /// than shipping a provider that silently reads nothing.
+    /// </summary>
+    public void SeeConfirmationShapeMatchesFixtures()
+    {
+        AddStep(new ExpectationStepState("Live Ceph output parses to the shape the fixtures model", () =>
+        {
+            var observation = Observation;
+            var namesLookRight = observation.HealthChecks.All(check =>
+                check.Name.Length > 0
+                && check.Name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character) || character == '_'));
+
+            // A wrong path to the message would leave every message empty, and nothing else here
+            // would notice — while classification of a controller-owned noout, which matches flag
+            // words in the message, would silently stop recognising it. Same failure mode as
+            // reading PG states from a command that does not carry them.
+            var messagesLookRight = observation.HealthChecks.All(check => check.Message.Length > 0);
+            var severitiesLookRight = observation.HealthChecks.All(check =>
+                check.Severity.StartsWith("HEALTH_", StringComparison.Ordinal));
+
+            // Every PG state has to parse into tokens ColdCeph's vocabulary recognises. A state
+            // string it cannot split is a state whose readiness it cannot judge.
+            var pgStatesLookRight = observation.PgStates.Count > 0
+                                    && observation.PgStates.All(state => state.Count > 0 && state.Tokens.Any());
+
+            var capacityLooksRight = observation.Capacity is { TotalBytes: > 0 } capacity
+                                     && capacity.UsedBytes >= 0
+                                     && capacity.AvailableBytes >= 0;
+            var signals = CephSignals.From(observation);
+            return Task.FromResult(
+                namesLookRight
+                && messagesLookRight
+                && severitiesLookRight
+                && capacityLooksRight
+                && pgStatesLookRight
+                && observation.QuorumAvailable
+                && !signals.DurabilityFailure);
         }));
     }
 
@@ -56,8 +115,8 @@ public sealed class CephAdapter : XceptoAdapter
     {
         AddStep(new ActionStepState("Control ceph set-group and unset-group noout", () =>
         {
-            _noout.SetGroupNoout(CephCluster.NooutScope);
-            _noout.UnsetGroupNoout(CephCluster.NooutScope);
+            _noout.SetGroupNoout(SharedEnvironment.NooutScope);
+            _noout.UnsetGroupNoout(SharedEnvironment.NooutScope);
             return Task.CompletedTask;
         }));
     }

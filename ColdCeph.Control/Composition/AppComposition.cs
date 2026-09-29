@@ -46,7 +46,7 @@ public static class AppComposition
         builder.Services.AddSingleton(config);
         builder.Logging.AddFilter(ControlLogging.ShouldLog);
         builder.Services.AddSingleton<IClock, SystemClock>();
-        builder.Services.AddSingleton<SystemProcessRunner>();
+        builder.Services.AddSingleton(new SystemProcessRunner(config.CephCommandTimeout));
         builder.Services.AddSingleton<IProcessRunner>(services =>
             new SerialProcessRunner(services.GetRequiredService<SystemProcessRunner>()));
         builder.Services.AddHttpContextAccessor();
@@ -92,7 +92,7 @@ public static class AppComposition
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddSingleton<AuthController>();
 
-        if (config.BindHttpListeners)
+        if (config.RunReconcilers)
         {
             builder.Services.AddHostedService<StoragePlaneReconciler>();
             builder.Services.AddHostedService<OsdsReconciler>();
@@ -153,7 +153,12 @@ public static class AppComposition
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// S3 is the second listener, and nothing else selects it. There used to be an
+    /// "X-ColdCeph-S3" header clause here so that a single-port WebApplicationFactory could
+    /// reach the gateway; in production it let any request to the operator port bypass MVC,
+    /// cookie auth and antiforgery. The tests bind two real ports instead.
+    /// </summary>
     private static bool IsS3(HttpContext context, ControlConfig config)
-        => context.Connection.LocalPort == config.S3Port
-           || context.Request.Headers.ContainsKey("X-ColdCeph-S3");
+        => context.Connection.LocalPort == config.S3Port;
 }

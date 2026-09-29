@@ -26,8 +26,7 @@ public sealed class StoragePlanePagesHttpTests
         Assert.That(html, Does.Contain("Storage setup"));
         Assert.That(html, Does.Not.Contain("action=\"/wake\""));
         Assert.That(html, Does.Not.Contain("action=\"/sleep\""));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(0));
-        Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(0));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(0));
         Assert.That(factory.Ceph.MembershipCalls, Is.EqualTo(0));
     }
 
@@ -105,8 +104,7 @@ public sealed class StoragePlanePagesHttpTests
         Assert.That(html, Does.Contain("action=\"/wake\""));
         Assert.That(html, Does.Not.Contain("Advanced transition details"));
         Assert.That(html, Does.Not.Contain("href=\"/integrity\""));
-        Assert.That(factory.Ceph.HealthDetailCalls, Is.EqualTo(1));
-        Assert.That(factory.Ceph.CapacityCalls, Is.EqualTo(1));
+        Assert.That(factory.Ceph.ObservationCalls, Is.EqualTo(1));
         Assert.That(factory.Ceph.MembershipCalls, Is.EqualTo(0));
     }
 
