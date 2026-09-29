@@ -15,6 +15,9 @@ concurrency:
 permissions:
   contents: read
 
+# A step that needs a repository secret is gated on that secret being non-empty.
+# Dependabot and similar bots do not receive secrets; missing ones must skip, not fail.
+
 jobs:
   version:
     name: Determine version
@@ -69,7 +72,7 @@ jobs:
         run: node .github/scripts/coverage-summary.js artifacts/test-results
 
       - name: Upload coverage to Codecov
-        if: always() && !cancelled()
+        if: ${{ always() && !cancelled() && secrets.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

@@ -212,8 +212,8 @@ and the E2E cluster was forced to `HEALTH_OK` before any test ran. See
 - Positive + negative tests for every behavioral expectation. A test is only meaningful if it can
   distinguish correct behaviour from incorrect behaviour.
 - CI collects coverage and prints every production file no test executes. That list is a queue, not
-  a score. The same Cobertura reports are uploaded to Codecov; Codecov statuses are informational
-  and do not fail the job.
+  a score. The same Cobertura reports are uploaded to Codecov when `CODECOV_TOKEN` is present;
+  Codecov statuses are informational and do not fail the job.
 
 ## Mechanics
 
@@ -313,9 +313,11 @@ E2E job that only runs `ColdCeph.E2E.Tests`. The `[SetUpFixture]` starts Ceph vi
 The unit job collects coverage and runs `.github/scripts/coverage-summary.js`, which lists every
 production file no test executes, then uploads the Cobertura reports to Codecov
 (`codecov/codecov-action@v5`, `CODECOV_TOKEN`). Codecov project and patch statuses are
-informational; they do not fail CI. The E2E job does not collect coverage and runs under
-`--blame-hang`. Both jobs upload test results, and an E2E failure uploads every container's
-logs — a flaky run has to leave something behind.
+informational; they do not fail CI. A step that needs a repository secret is gated on that
+secret being non-empty: Dependabot and similar bots do not receive secrets, and a missing
+token must skip the step rather than fail the job. The E2E job does not collect coverage and
+runs under `--blame-hang`. Both jobs upload test results, and an E2E failure uploads every
+container's logs — a flaky run has to leave something behind.
 CI plans one version before those jobs: non-`main` runs use `0.0.0-ci.<run>`, while serialized
 `main` runs use semantic-release with Conventional Commits to determine the next SemVer. After
 both test jobs pass, semantic-release publishes the two versioned debs plus checksums, creates the
