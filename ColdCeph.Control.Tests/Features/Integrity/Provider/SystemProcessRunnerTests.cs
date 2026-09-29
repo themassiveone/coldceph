@@ -135,9 +135,11 @@ public sealed class SystemProcessRunnerTests
     {
         var runner = new SystemProcessRunner(TimeSpan.FromSeconds(10));
 
-        // If arguments went through a shell, the semicolon would start a second command.
-        var output = runner.Run("/bin/echo", ["a; rm -rf /tmp/nope", "b"]);
+        // $1 is one argv entry. If ArgumentList were concatenated into a shell command,
+        // the semicolon would run `echo INJECTED` as a second command. `/bin/echo` is
+        // not on the FHS on NixOS; `/bin/sh` is what the rest of this fixture already requires.
+        var output = runner.Run("/bin/sh", ["-c", "printf '%s\\n' \"$1\"", "_", "a; echo INJECTED"]);
 
-        Assert.That(output.Trim(), Is.EqualTo("a; rm -rf /tmp/nope b"));
+        Assert.That(output.Trim(), Is.EqualTo("a; echo INJECTED"));
     }
 }
